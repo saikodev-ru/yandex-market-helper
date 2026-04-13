@@ -1,0 +1,126 @@
+{
+  "manifest_version": 3,
+  "name": "M.Helper (Маркет.Помощник)",
+  "version": "2.4",
+  "description": "Добавляет возможности при работе с заказами Маркета",
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting",
+    "activeTab",
+    "downloads",
+    "downloads.open",
+    "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess",
+    "webRequest"
+  ],
+  "host_permissions": [
+    "https://hubs.market.yandex.ru/*",
+    "https://api.openai.com/*",
+    "https://partner.market.yandex.ru/*",
+    "https://logistics.market.yandex.ru/*",
+    "https://pvz-sound.s3.yandex.net/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://partner.market.yandex.ru/*",
+        "https://hubs.market.yandex.ru/*",
+        "https://logistics.market.yandex.ru/*"
+      ],
+      "js": [
+        "content.js",
+        "renum.js",
+        "redesign.js",
+        "ship-redesign.js",
+        "alert.js",
+        "news.js",
+        "issuing.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://hubs.market.yandex.ru/tpl-outlet/*/issuing/client-session/*?sessionId=*"
+      ],
+      "js": [
+        "renum.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://hubs.market.yandex.ru/tpl-outlet/*/acceptance-request*"
+      ],
+      "js": [
+        "ship.js",
+        "new-placement.js",
+        "acceptance.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://hubs.market.yandex.ru/tpl-outlet/*/placement*"
+      ],
+      "js": [
+        "placement.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://hubs.market.yandex.ru/tpl-outlet/*/consolidation*"
+      ],
+      "js": [
+        "renum.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "M.Helper (Засужу за передачу/перепродажу расширения)"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "block-pvz-sound",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "img/*.png",
+        "img/*.jpg",
+        "img/tooltip/*.jpg",
+        "libs/qrcode.min.js",
+        "libs/jspdf.umd.min.js",
+        "sounds/num/*.mp3",
+        "sounds/other/*.mp3",
+        "sounds/*.mp3",
+        "redesign.css",
+        "ship-redesign.css"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}

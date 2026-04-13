@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Маркет.Помощник</title>
+<style>
+  /* ── Tokens ── */
+  :root {
+    --acc:        #ff3b30;
+    --acc-dim:    rgba(255,59,48,0.32);
+    --acc-glow:   rgba(255,59,48,0.20);
+    --gold:       #ffd60a;
+
+    --radius-card: 20px;
+    --radius-ico:  12px;
+  }
+
+  /* DARK */
+  [data-theme="dark"] {
+    --bg-deep:       #07070c;
+    --glass-bg:      rgba(255,255,255,0.065);
+    --glass-border:  rgba(255,255,255,0.13);
+    --glass-shine:   rgba(255,255,255,0.22);
+    --glass-shadow:  rgba(0,0,0,0.45);
+    --hd-bg:         rgba(255,255,255,0.055);
+    --hd-border:     rgba(255,255,255,0.13);
+    --sep:           rgba(255,255,255,0.075);
+    --row-active:    rgba(255,255,255,0.05);
+    --tog-off:       rgba(255,255,255,0.14);
+    --tog-off-b:     rgba(255,255,255,0.10);
+    --t1: #ffffff;
+    --t2: rgba(255,255,255,0.56);
+    --t3: rgba(255,255,255,0.30);
+    --blob-mix: normal;
+    --blob1-c: #ff3b30; --blob2-c: #5e5ce6; --blob3-c: #30d158;
+  }
+
+  /* LIGHT */
+  [data-theme="light"] {
+    --bg-deep:       #f2f2f7;
+    --glass-bg:      rgba(255,255,255,0.72);
+    --glass-border:  rgba(0,0,0,0.09);
+    --glass-shine:   rgba(255,255,255,0.9);
+    --glass-shadow:  rgba(0,0,0,0.10);
+    --hd-bg:         rgba(255,255,255,0.80);
+    --hd-border:     rgba(0,0,0,0.09);
+    --sep:           rgba(0,0,0,0.07);
+    --row-active:    rgba(0,0,0,0.04);
+    --tog-off:       rgba(0,0,0,0.16);
+    --tog-off-b:     rgba(0,0,0,0.08);
+    --t1: #0d0d0d;
+    --t2: rgba(0,0,0,0.50);
+    --t3: rgba(0,0,0,0.34);
+    --blob1-c: #ff3b30; --blob2-c: #5e5ce6; --blob3-c: #34c759;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    width: 340px;
+    background: var(--bg-deep);
+    color: var(--t1);
+    font-family: -apple-system, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    font-size: 14px;
+    line-height: 1.4;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    transition: background .35s, color .35s;
+  }
+
+  /* Atmospheric blobs */
+  .bg-blobs {
+    position: fixed; inset: 0;
+    pointer-events: none; z-index: 0; overflow: hidden;
+  }
+  .blob {
+    position: absolute; border-radius: 50%; filter: blur(64px);
+    transition: opacity .4s;
+  }
+  .blob-1 { width:200px;height:200px; background:var(--blob1-c); opacity:.15; top:-50px; left:-40px; }
+  .blob-2 { width:160px;height:160px; background:var(--blob2-c); opacity:.12; bottom:60px; right:-40px; }
+  .blob-3 { width:130px;height:130px; background:var(--blob3-c); opacity:.08; bottom:130px; left:10px; }
+  [data-theme="light"] .blob-1 { opacity:.10; }
+  [data-theme="light"] .blob-2 { opacity:.08; }
+  [data-theme="light"] .blob-3 { opacity:.06; }
+
+  .shell { position: relative; z-index: 1; }
+
+  /* ── Header ── */
+  .hd {
+    padding: 15px 16px 13px;
+    display: flex; align-items: center; gap: 12px;
+    background: var(--hd-bg);
+    backdrop-filter: blur(40px) saturate(180%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    border-bottom: 1px solid var(--hd-border);
+    position: relative; overflow: hidden;
+    transition: background .35s, border-color .35s;
+  }
+  [data-theme="dark"] .hd::before {
+    content:''; position:absolute; top:0;left:0;right:0; height:1px;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,0.4) 40%,rgba(255,255,255,0.1) 70%,transparent);
+  }
+
+  .hd-logo {
+    width:40px;height:40px;border-radius:12px;
+    background:linear-gradient(145deg,rgba(255,255,255,0.14),rgba(255,255,255,0.04));
+    border:1px solid rgba(255,255,255,0.15);
+    box-shadow:0 2px 10px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,255,255,0.18);
+    flex-shrink:0; display:flex;align-items:center;justify-content:center; overflow:hidden;
+  }
+  .hd-logo img { width:100%;height:100%;object-fit:contain; }
+  .hd-logo-letter {
+    font-size:20px;font-weight:800;
+    background:linear-gradient(135deg,var(--acc),#ff7448);
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  }
+
+  .hd-center { flex:1; min-width:0; }
+  .hd-name {
+    font-size:16px;font-weight:700;letter-spacing:-.025em;
+    color: var(--t1);
+    transition: color .35s;
+  }
+  .hd-sub {
+    margin-top:2px;display:flex;align-items:center;gap:6px;
+    font-size:11px;color:var(--t3);font-weight:500;
+    transition: color .35s;
+  }
+
+  /* ── Theme switcher button ── */
+  .theme-btn {
+    width:34px;height:34px;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;flex-shrink:0;
+    background:var(--glass-bg);
+    border:1px solid var(--glass-border);
+    backdrop-filter:blur(20px);
+    -webkit-backdrop-filter:blur(20px);
+    transition:background .2s, border-color .2s, transform .15s;
+    box-shadow:0 2px 8px rgba(0,0,0,0.18);
+  }
+  .theme-btn:hover { transform:scale(1.06); }
+  .theme-btn:active { transform:scale(0.93); }
+  .theme-btn svg {
+    width:16px;height:16px;
+    stroke:var(--t1);fill:none;
+    stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;
+    transition:stroke .35s;
+  }
+  /* Show/hide sun & moon */
+  .icon-sun  { display:none; }
+  .icon-moon { display:block; }
+  [data-theme="light"] .icon-sun  { display:block; }
+  [data-theme="light"] .icon-moon { display:none; }
+
+  /* Pills */
+  .pill {
+    display:inline-flex;align-items:center;
+    padding:2px 7px;border-radius:20px;
+    font-size:10px;font-weight:700;letter-spacing:.05em;line-height:1.6;
+  }
+  .pill-red  { background:rgba(255,59,48,0.85);color:#fff;box-shadow:0 0 8px rgba(255,59,48,0.35); }
+  .pill-gold { background:rgba(255,214,10,0.9);color:#1a1200;box-shadow:0 0 8px rgba(255,214,10,0.28); }
+
+  /* ── Body ── */
+  .body { padding:13px 12px 17px;display:flex;flex-direction:column;gap:6px; }
+
+  .lbl {
+    font-size:11px;font-weight:600;letter-spacing:.07em;
+    text-transform:uppercase;color:var(--t3);
+    padding:0 6px;margin-top:8px;margin-bottom:2px;
+    display:flex;align-items:center;gap:7px;
+    transition:color .35s;
+  }
+  .lbl:first-child { margin-top:0; }
+
+  /* ── Card ── */
+  .card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(40px) saturate(160%);
+    -webkit-backdrop-filter: blur(40px) saturate(160%);
+    border-radius: var(--radius-card);
+    border: 1px solid var(--glass-border);
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 6px 28px var(--glass-shadow), inset 0 1px 0 var(--glass-shine), inset 0 -1px 0 rgba(0,0,0,0.10);
+    animation: rise .32s cubic-bezier(.22,1,.36,1) both;
+    transition: background .35s, border-color .35s, box-shadow .35s;
+  }
+  [data-theme="dark"] .card::before {
+    content:'';position:absolute;
+    top:0;left:8%;right:8%;height:1px;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,0.5) 50%,transparent);
+  }
+  [data-theme="dark"] .card::after {
+    content:'';position:absolute;inset:0;border-radius:var(--radius-card);
+    background:linear-gradient(155deg,rgba(255,255,255,0.04) 0%,transparent 55%);
+    pointer-events:none;
+  }
+
+  .card:nth-child(2){animation-delay:.04s}
+  .card:nth-child(4){animation-delay:.09s}
+  .card:nth-child(6){animation-delay:.14s}
+  .card:nth-child(8){animation-delay:.19s}
+  .card:nth-child(10){animation-delay:.24s}
+  .card:nth-child(12){animation-delay:.28s}
+
+  /* ── Row ── */
+  .row {
+    display:flex;align-items:center;gap:12px;
+    padding:11px 14px;position:relative;
+    transition:background .15s;cursor:default;
+  }
+  .row + .row::before {
+    content:'';position:absolute;
+    top:0;left:14px;right:14px;height:1px;
+    background:var(--sep);
+  }
+  .row:active { background:var(--row-active); }
+
+  /* ── Icon ── */
+  .ico {
+    width:34px;height:34px;border-radius:var(--radius-ico);
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;position:relative;overflow:hidden;
+    box-shadow:0 2px 8px rgba(0,0,0,0.30),inset 0 1px 0 rgba(255,255,255,0.30);
+  }
+  .ico::after {
+    content:'';position:absolute;top:0;left:0;right:0;height:50%;
+    background:linear-gradient(180deg,rgba(255,255,255,0.24),transparent);
+    border-radius:var(--radius-ico) var(--radius-ico) 0 0;pointer-events:none;
+  }
+  .ico svg {
+    width:18px;height:18px;
+    stroke:#fff;fill:none;
+    stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round;
+    position:relative;z-index:1;
+  }
+
+  .ico-purple { background:linear-gradient(145deg,#7c5ce8,#5534c4); }
+  .ico-orange { background:linear-gradient(145deg,#ff8c42,#dd5d00); }
+  .ico-teal   { background:linear-gradient(145deg,#1de3b8,#0da88a); }
+  .ico-blue   { background:linear-gradient(145deg,#3fa8f5,#1472d0); }
+  .ico-green  { background:linear-gradient(145deg,#34c759,#1a9e42); }
+  .ico-red    { background:linear-gradient(145deg,#ff5e57,#d42020); }
+  .ico-pink   { background:linear-gradient(145deg,#ff6aaa,#ce1a6e); }
+  .ico-indigo { background:linear-gradient(145deg,#6e6dda,#3e3eb0); }
+  .ico-amber  { background:linear-gradient(145deg,#ffc330,#dd8800); }
+  .ico-slate  { background:linear-gradient(145deg,#7e8fa8,#4e6070); }
+  .ico-cyan   { background:linear-gradient(145deg,#40d4f0,#06a8cc); }
+
+  .rb { flex:1;min-width:0; }
+  .rn {
+    font-size:14px;font-weight:500;color:var(--t1);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.01em;
+    transition:color .35s;
+  }
+  .rd {
+    font-size:11.5px;color:var(--t2);margin-top:2px;line-height:1.35;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    transition:color .35s;
+  }
+
+  /* ── Toggle (RED active) ── */
+  .tog {
+    position:relative;flex-shrink:0;
+    width:51px;height:31px;
+    cursor:pointer;-webkit-tap-highlight-color:transparent;
+  }
+  .tog input { position:absolute;opacity:0;width:0;height:0; }
+  .tk {
+    position:absolute;inset:0;border-radius:16px;
+    background:var(--tog-off);
+    border:1px solid var(--tog-off-b);
+    box-shadow:inset 0 1px 3px rgba(0,0,0,0.30);
+    transition:background .26s cubic-bezier(.4,0,.2,1),box-shadow .26s cubic-bezier(.4,0,.2,1),border-color .26s;
+    overflow:hidden;
+  }
+  [data-theme="dark"] .tk::after {
+    content:'';position:absolute;top:0;left:0;right:0;height:50%;
+    background:linear-gradient(180deg,rgba(255,255,255,0.13),transparent);
+    border-radius:16px 16px 0 0;pointer-events:none;
+  }
+  .th {
+    position:absolute;top:2px;left:2px;
+    width:27px;height:27px;border-radius:50%;
+    background:linear-gradient(160deg,#ffffff,#dcdce0);
+    box-shadow:0 3px 8px rgba(0,0,0,0.50),0 1px 3px rgba(0,0,0,0.28),inset 0 1px 0 rgba(255,255,255,0.92);
+    transition:transform .26s cubic-bezier(.4,0,.2,1),width .14s cubic-bezier(.4,0,.2,1);
+  }
+  .tog input:checked ~ .tk {
+    background:var(--acc);
+    border-color:rgba(255,59,48,0.5);
+    box-shadow:0 0 0 3px var(--acc-glow),0 0 16px var(--acc-dim),inset 0 1px 3px rgba(0,0,0,0.15);
+  }
+  .tog input:checked ~ .tk .th { transform:translateX(20px); }
+  .tog:active .th { width:31px; }
+  .tog:active input:checked ~ .tk .th { transform:translateX(16px); }
+
+  /* ── Footer ── */
+  .ft {
+    padding:10px 14px 14px;text-align:center;
+    font-size:11px;color:var(--t3);line-height:1.6;
+    border-top:1px solid var(--sep);
+    transition:color .35s,border-color .35s;
+  }
+  .ft a { color:var(--acc);text-decoration:none;font-weight:500; }
+  .ft a:hover { text-decoration:underline; }
+
+  @keyframes rise {
+    from { opacity:0;transform:translateY(10px) scale(.98); }
+    to   { opacity:1;transform:none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bg-blobs">
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+</div>
+
+<div class="shell">
+
+  <div class="hd">
+    <div class="hd-logo">
+      <img src="icons/icon48.png" alt=""
+           onerror="this.style.display='none';this.parentNode.querySelector('.hd-logo-letter').style.display='block'">
+      <span class="hd-logo-letter" style="display:none">М</span>
+    </div>
+    <div class="hd-center">
+      <div class="hd-name">Маркет.Помощник</div>
+      <div class="hd-sub">v2 &nbsp;<span class="pill pill-red">Premium</span></div>
+    </div>
+    <!-- Theme toggle -->
+    <button class="theme-btn" id="themeBtn" title="Сменить тему">
+      <!-- Sun (shown in light mode) -->
+      <svg class="icon-sun" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="5"/>
+        <line x1="12" y1="1"  x2="12" y2="3"/>
+        <line x1="12" y1="21" x2="12" y2="23"/>
+        <line x1="4.22" y1="4.22"  x2="5.64" y2="5.64"/>
+        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+        <line x1="1"  y1="12" x2="3"  y2="12"/>
+        <line x1="21" y1="12" x2="23" y2="12"/>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+      </svg>
+      <!-- Moon (shown in dark mode) -->
+      <svg class="icon-moon" viewBox="0 0 24 24">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="body">
+
+    <div class="lbl">Внешний вид</div>
+    <div class="card">
+      <div class="row">
+        <div class="ico ico-purple">
+          <!-- Layout / interface redesign: sidebar + content panes -->
+          <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" rx="3"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="2" y1="9" x2="9" y2="9"/></svg>
+        </div>
+        <div class="rb">
+          <div class="rn">Редизайн интерфейса</div>
+          <div class="rd">Навигация, скрытие сайдбара, стилизация</div>
+        </div>
+        <label class="tog"><input type="checkbox" id="toggleRedesign"><span class="tk"><span class="th"></span></span></label>
+      </div>
+      <div class="row">
+        <div class="ico ico-orange">
+          <svg viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 4v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+        </div>
+        <div class="rb">
+          <div class="rn">Редизайн «Отгрузки»</div>
+          <div class="rd">Цветные типы, кнопка скрытия строк</div>
+        </div>
+        <label class="tog"><input type="checkbox" id="toggleShipRedesign"><span class="tk"><span class="th"></span></span></label>
+      </div>
+      <div class="row">
+        <div class="ico ico-teal">
+          <svg viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5"/><line x1="12" y1="13" x2="12" y2="21"/></svg>
+        </div>
+        <div class="rb">
+          <div class="rn">Компактный хинт</div>
+          <div class="rd">Сжать баннер «Выбери направление»</div>
+        </div>
+        <label class="tog"><input type="checkbox" id="toggleCompactHint"><span class="tk"><span class="th"></span></span></label>
+      </div>
+      <div class="row">
+        <div class="ico ico-indigo">
+          <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="19" cy="17" r="3"/><path d="M19 15v2l1 1"/></svg>
+        </div>
+        <div class="rb">
+          <div class="rn">Компактные новости</div>
+          <div class="rd">Свернуть новостные блоки, раскрывать по клику</div>
+        </div>
+        <label class="tog"><input type="checkbox" id="toggleCompactNews"><span class="tk"><span class="th"></span></span></label>
+      </div>
+      <!-- Кнопка восстановления — скрыта пока нет скрытых блоков -->
+      <div class="row" id="restoreNewsRow" style="display:none">
+        <div class="ico ico-amber">
+          <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+        </div>
+        <div class="rb">
+          <div class="rn">Восстановить скрытые</div>
+          <div class="rd" id="restoreNewsDesc">Нет скрытых блоков</div>
+        </div>
+        <button id="restoreNewsBtn" style="
+          width:auto; padding:5px 10px; font-size:12px; font-weight:600;
+          background:var(--acc); color:#fff; border:none; border-radius:8px;
+          cursor:pointer; white-space:nowrap; flex-shrink:0;
+        ">Вернуть все</button>
+      </div>
+    </div>
+
+    <div class="lbl">Выдача</div>
+    <div class="card">
+      <div class="row">
+        <div class="ico ico-green">
+          <!-- Search + merge icon -->
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="11" y1="8" x2="11" y2="14"/></svg>
+        </div>
+        <div class="rb">
+          <div class="rn">Новая выдача</div>
+          <div class="rd">Объединить заголовок и строку поиска заказов</div>
+        </div>
+        <label class="tog"><input type="checkbox" id="toggleNewIssuing"><span class="tk"><span class="th"></span></span></label>
+      </div>
+    </div>
+
+    <div class="lbl">Приёмка</div>
+    <div class="card">
+      <div class="row">
+        <div class="ico ico-teal">
+          <svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M8 7v10"/><path d="M12 7v10"/><path d="M17 7v10"/><path d="M10 7v10"/><path d="M14 7v10"/><path d="M6 7v10"/></svg>
+        </div>
+        <div class="rb">
+          <div class="rn">Новая приёмка</div>
+          <div class="rd">Стилизованный поиск и скан-баннер</div>
+        </div>
+        <label class="tog"><input type="checkbox" id="toggleNewAcceptance"><span class="tk"><span class="th"></span></span></label>
+      </div>
+      <div class="row">
+        <div class="ico ico-blue">
+          <svg viewBox="0 0 24 24"><line x1="3"  y1="5" x2="3"  y2="19"/><line x1="7"  y1="5" x2="7"  y2="19"/><line x1="12" y1="5" x2="12" y2="19"/><line x1="17" y1="5" x2="17" y2="19"/><line x1="21" y1="5" x2="21" y2="19"/></svg>
+        </div>
+        <div class="rb">
+          <div class="rn">Кнопки «Нет штрихкода»</div>
+          <div class="rd">Печать этикеток для повреждённых ШК</div>
+        </div>
+        <label class="tog"><input type="checkbox" id="toggleNoBarcode"><span class="tk"><span class="th"></span></span></label>
+      </div>
+    </div>
+
+    <div class="lbl">Голосовые уведомления</div>
+    <div class="card">
+      <div class="row">
+        <div class="ico ico-red">
+          <svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+        </div>
+        <div class="rb">
+          <div class="rn">Озвучка правил выдачи</div>
+          <div class="rd">Авито / Lamoda — при открытии заказа</div>
+        </div>
+        <label class="tog"><input type="checkbox" id="toggleVoiceAlerts"><span class="tk"><span class="th"></span></span></label>
+      </div>
+      <div class="row">
+        <div class="ico ico-green">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/></svg>
+        </div>
+        <div class="rb">
+          <div class="rn">Завершение размещения</div>
+          <div class="rd">Звук, когда все заказы на месте</div>
+        </div>
+        <label class="tog"><input type="checkbox" id="togglePlacementComplete"><span class="tk"><span class="th"></span></span></label>
+      </div>
+      <div class="row">
+        <div class="ico ico-cyan">
+          <svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="3"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="12" y1="8" x2="12" y2="16"/></svg>
+        </div>
+        <div class="rb">
+          <div class="rn">Озвучка ячеек</div>
+          <div class="rd">Номер ячейки голосом на приёмке и размещении</div>
+        </div>
+        <label class="tog"><input type="checkbox" id="toggleRenum"><span class="tk"><span class="th"></span></span></label>
+      </div>
+    </div>
+
+    <div class="lbl">Звуковые эффекты &nbsp;<span class="pill pill-gold">Новое</span></div>
+    <div class="card">
+      <div class="row">
+        <div class="ico ico-indigo">
+          <svg viewBox="0 0 24 24"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
+        </div>
+        <div class="rb">
+          <div class="rn">Звук 5-значных кодов</div>
+          <div class="rd">go.mp3 при вводе пятизначной комбинации</div>
+        </div>
+        <label class="tog"><input type="checkbox" id="toggleGoSound"><span class="tk"><span class="th"></span></span></label>
+      </div>
+      <div class="row">
+        <div class="ico ico-pink">
+          <svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>
+        </div>
+        <div class="rb">
+          <div class="rn">Звук «Ввести код»</div>
+          <div class="rd">entercode.mp3 при нажатии кнопки</div>
+        </div>
+        <label class="tog"><input type="checkbox" id="toggleEnterCodeSound"><span class="tk"><span class="th"></span></span></label>
+      </div>
+      <div class="row">
+        <div class="ico ico-amber">
+          <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/><line x1="5" y1="16" x2="9" y2="16"/><line x1="12" y1="16" x2="14" y2="16"/></svg>
+        </div>
+        <div class="rb">
+          <div class="rn">Звук успешной оплаты</div>
+          <div class="rd">oplata.mp3 при подтверждении платежа</div>
+        </div>
+        <label class="tog"><input type="checkbox" id="toggleOplataSound"><span class="tk"><span class="th"></span></span></label>
+      </div>
+      <div class="row">
+        <div class="ico ico-cyan">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+        </div>
+        <div class="rb">
+          <div class="rn">Звук «Код принят»</div>
+          <div class="rd">success-ship.mp3 при принятии кода</div>
+        </div>
+        <label class="tog"><input type="checkbox" id="toggleSuccessShipSound"><span class="tk"><span class="th"></span></span></label>
+      </div>
+    </div>
+
+    <div class="lbl">Горячие клавиши</div>
+    <div class="card">
+      <div class="row">
+        <div class="ico ico-slate">
+          <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2.5"/><circle cx="6"  cy="10" r="1.1" fill="#fff" stroke="none"/><circle cx="10" cy="10" r="1.1" fill="#fff" stroke="none"/><circle cx="14" cy="10" r="1.1" fill="#fff" stroke="none"/><circle cx="18" cy="10" r="1.1" fill="#fff" stroke="none"/><line x1="7" y1="14" x2="17" y2="14"/></svg>
+        </div>
+        <div class="rb">
+          <div class="rn">Горячие клавиши RAlt</div>
+          <div class="rd">RAlt+Y — успех · RAlt+E+R — код</div>
+        </div>
+        <label class="tog"><input type="checkbox" id="toggleHotkeys"><span class="tk"><span class="th"></span></span></label>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="ft">
+    © 2025 <a href="https://saiko.dev" target="_blank">Saiko.dev</a>
+    &nbsp;·&nbsp;
+    <a href="https://t.me/ymarket_helper" target="_blank">Telegram</a>
+  </div>
+
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>

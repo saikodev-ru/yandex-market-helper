@@ -1,0 +1,129 @@
+/* ─── Таблица unified-shipment: React-proof стилизация ──────────────────────── *
+ *                                                                               *
+ * data-mod-hidden    — строка скрыта пользователем вручную (кнопка ×)          *
+ * data-mod-ship-type — тип отправления, ставит JS на <tr>                      *
+ * data-i18n-key      — воспроизводится React → CSS ::after безопасен           *
+ * ─────────────────────────────────────────────────────────────────────────────*/
+
+/* Строки, скрытые пользователем вручную */
+tr[data-mod-hidden] {
+    display: none !important;
+}
+
+/* Сброс нейтрального фона у всех бейджей типа на странице отгрузки */
+tr[data-mod-ship-type] [class*="mez-bg-themeLayerBgNeutral"] {
+    border-radius: 6px !important;
+    padding: 2px 8px !important;
+    /* neutral bg убираем — конкретный цвет выставит правило ниже */
+    background-color: transparent !important;
+}
+
+/* ── Дроп-офф (Грузоместо) → красный ────────────────────────────────────── */
+tr[data-mod-ship-type="drop"] [class*="mez-bg-themeLayerBgNeutral"] {
+    background-color: #ff4114 !important;
+}
+tr[data-mod-ship-type="drop"] [class*="mez-bg-themeLayerBgNeutral"] span,
+tr[data-mod-ship-type="drop"] [class*="mez-bg-themeLayerBgNeutral"] div {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+
+/* Переименование «Грузоместо» → «Дроп-офф» через CSS (React-proof: data-i18n-key) */
+[data-i18n-key="features.unified-shipment:shipment-type.DROPOFF"] {
+    font-size: 0 !important;    /* прячем оригинальный текст */
+    line-height: 0 !important;
+}
+[data-i18n-key="features.unified-shipment:shipment-type.DROPOFF"]::after {
+    content: 'Дроп-офф';
+    font-size: 12px;
+    line-height: 1.4;
+    color: #ffffff;
+    font-weight: 700;
+    font-family: 'Product Sans', 'Google Sans', sans-serif;
+}
+
+/* ── Утилизация → жёлтый ────────────────────────────────────────────────── */
+tr[data-mod-ship-type="util"] [class*="mez-bg-themeLayerBgNeutral"] {
+    background-color: #ffe066 !important;
+}
+tr[data-mod-ship-type="util"] [class*="mez-bg-themeLayerBgNeutral"] span,
+tr[data-mod-ship-type="util"] [class*="mez-bg-themeLayerBgNeutral"] div {
+    color: #1a1a1a !important;
+    font-weight: 700 !important;
+}
+
+/* ── Невыкуп / Клиентский возврат / Сейф-пакет → зелёный ───────────────── */
+tr[data-mod-ship-type="green"] [class*="mez-bg-themeLayerBgNeutral"] {
+    background-color: #2ecc71 !important;
+}
+tr[data-mod-ship-type="green"] [class*="mez-bg-themeLayerBgNeutral"] span,
+tr[data-mod-ship-type="green"] [class*="mez-bg-themeLayerBgNeutral"] div {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+
+/* ── Засыл → оранжевый ──────────────────────────────────────────────────── */
+tr[data-mod-ship-type="zasyl"] [class*="mez-bg-themeLayerBgNeutral"] {
+    background-color: #ff8c00 !important;
+}
+tr[data-mod-ship-type="zasyl"] [class*="mez-bg-themeLayerBgNeutral"] span,
+tr[data-mod-ship-type="zasyl"] [class*="mez-bg-themeLayerBgNeutral"] div {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+/* ── Кнопка × (скрыть строку) ───────────────────────────────────────────── */
+.mod-ship-close {
+    position: absolute;
+    top: 50%;
+    right: 6px;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: #b0b0b0;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+    padding: 0;
+    flex-shrink: 0;
+    z-index: 1;
+}
+
+tr:hover .mod-ship-close {
+    opacity: 1;
+}
+
+.mod-ship-close:hover {
+    background: #fff0ef !important;
+    color: #ff5149 !important;
+}
+
+/* ── Кнопка "Восстановить список" ───────────────────────────────────────── */
+.mod-ship-restore-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 12px;
+    padding: 4px 14px;
+    border-radius: 8px;
+    border: 1.5px solid #e0e0e0;
+    background: #ffffff;
+    color: #555555;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: 'Product Sans', 'Google Sans', sans-serif;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+    white-space: nowrap;
+}
+
+.mod-ship-restore-btn:hover {
+    border-color: #ff5149;
+    color: #ff5149;
+    background: #fff5f5;
+}

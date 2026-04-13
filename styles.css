@@ -1,0 +1,739 @@
+/* styles.css — рефакторинг: убраны дубли, невалидный CSS, тяжёлые универсальные селекторы */
+
+/* ─── Шрифт ─────────────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Product+Sans:wght@600;700;800&display=swap');
+
+* {
+    font-family: 'Product Sans', 'Google Sans', sans-serif !important;
+}
+
+/* ─── Переменные z-index (единое место для всех уровней) ────────────────────── */
+:root {
+    --z-nav:          999999;
+    --z-notification: 1000000;
+    --z-overlay:      1000010;
+    --z-modal:        1000011;
+    --z-modal-inner:  1000012;
+    --z-modal-badge:  1000013;
+}
+
+/* ─── Floating-элементы: три сценария ──────────────────────────────────────────
+ *
+ * A) ReactModal в body
+ * B) Tooltip/dropdown внутри дерева: role="tooltip" + mez-visible  
+ * C) Popover внутри дерева: ___container___ с inline top/left
+ *
+ * Важно: CSS здесь — статическая страховка для состояний до bootstrap.
+ * JS (liftToTop) дополнительно поднимает прямого ребёнка body,
+ * решая проблему stacking context для вложенных элементов.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/* A: ReactModal */
+.ReactModal__Overlay {
+    z-index: 1000000 !important;
+}
+.ReactModal__Content {
+    z-index: 1000001 !important;
+    position: relative !important;
+}
+
+/* A: прочие порталы в body */
+body > div:not(#modern-custom-nav)[role="dialog"],
+body > div:not(#modern-custom-nav)[role="alertdialog"],
+body > div:not(#modern-custom-nav)[role="menu"],
+body > div:not(#modern-custom-nav)[role="listbox"],
+body > div:not(#modern-custom-nav)[aria-modal],
+body > div:not(#modern-custom-nav)[data-testid]:not([data-tid]) {
+    z-index: 1000000 !important;
+}
+
+/* B: tooltip/dropdown — только когда видим (mez-visible) */
+div[role="tooltip"].mez-visible,
+div[role="tooltip"][class*="mez-visible"] {
+    z-index: 1000000 !important;
+}
+
+/* C: popover-контейнер с координатами.
+ * Два варианта написания inline-стиля: "top:" и "top: " (с пробелом). */
+[class*="___container___"][style*="top:"],
+[class*="___container___"][style*="top: "] {
+    z-index: 1000000 !important;
+}
+
+[class*="___container___"] > [class*="___wrapper___"] {
+    position: relative !important;
+}
+
+
+body.pdf-page #modern-custom-nav,
+body:has(embed[type="application/pdf"]) #modern-custom-nav,
+body:has(iframe[src*=".pdf"]) #modern-custom-nav {
+    display: none !important;
+}
+
+/* ─── Уведомления (один блок) ───────────────────────────────────────────────── */
+div[class*="mez-fixed"][class*="mez-right-0"][class*="mez-bottom-0"],
+div[class*="mez-fixed"][class*="mez-z-1000"],
+div[class*="fixed"][class*="right-0"][class*="bottom-0"] {
+    z-index: var(--z-notification) !important;
+}
+
+div[class*="mez-fixed"][class*="mez-right-0"][class*="mez-bottom-0"] > div,
+div[class*="fixed"][class*="right-0"][class*="bottom-0"] > div {
+    z-index: calc(var(--z-notification) + 1) !important;
+}
+
+[data-e2e^="notification-"],
+[data-tid*="toast"],
+[class*="toast"] {
+    z-index: calc(var(--z-notification) + 1) !important;
+    position: relative !important;
+}
+
+div[data-e2e="notification-common-error"],
+div[data-e2e="notification-common-success"],
+div[data-e2e="notification-common-info"],
+div[data-e2e="notification-common-warning"] {
+    z-index: calc(var(--z-notification) + 2) !important;
+    position: relative !important;
+}
+
+div[class*="___toast___"]   { z-index: calc(var(--z-notification) + 3) !important; position: relative !important; }
+
+/* ___content___ и ___close___ — слишком широкий паттерн: на logistics он совпадает
+ * с сотнями обычных контентных div, создавая stacking contexts по всей странице.
+ * Сужаем: только внутри известных контейнеров уведомлений. */
+[data-e2e^="notification-"] [class*="___content___"],
+div[class*="___toast___"]   [class*="___content___"] { z-index: calc(var(--z-notification) + 4) !important; position: relative !important; }
+
+[data-e2e^="notification-"] [class*="___close___"],
+div[class*="___toast___"]   [class*="___close___"]   { z-index: calc(var(--z-notification) + 5) !important; position: relative !important; }
+
+/* Inline-style уведомления */
+div[style*="position: fixed"][style*="bottom: 0"][style*="right: 0"] {
+    z-index: var(--z-notification) !important;
+}
+
+/* ─── Дропдауны и тултипы ───────────────────────────────────────────────────── */
+div[role="tooltip"],
+div[data-testid*="dropdown"],
+div[data-testid*="popup"],
+div[data-testid*="tooltip"],
+div[class*="mez-z-"][class*="mez-visible"],
+div[role="tooltip"][class*="mez-visible"],
+[class*="mez-z-1000"],
+[class*="mez-z-600"],
+[class*="mez-z-500"] {
+    z-index: calc(var(--z-modal-badge) + 2) !important;
+}
+
+/* ─── Оверлей модальных окон ────────────────────────────────────────────────── */
+[data-testid="overlay"],
+div[data-testid="overlay"].mez-fixed,
+body > div.mez-fixed.mez-top-0.mez-bottom-0.mez-right-0.mez-left-0 {
+    z-index: var(--z-overlay) !important;
+    position: fixed !important;
+}
+
+/* Оверлей через inline-стили */
+div[style*="z-index: 600"][data-testid="overlay"],
+.mez-z-600[data-testid="overlay"] {
+    z-index: var(--z-overlay) !important;
+}
+
+/* ─── Контент модального окна ───────────────────────────────────────────────── */
+[aria-label="modal-content"],
+div[role="dialog"][aria-label="modal-content"],
+div:has(> div[role="dialog"][aria-label="modal-content"]) {
+    z-index: var(--z-modal) !important;
+    position: relative !important;
+}
+
+/*
+ * ВАЖНО: убран `div[role="dialog"] *` — универсальный селектор по всем дочерним
+ * элементам любого диалога. Он вызывал пересчёт стилей для сотен элементов.
+ * z-index для содержимого модалок с кодом теперь проставляется точечно через JS
+ * (forceModalToTop) только при наличии input[placeholder="Код"].
+ */
+
+/* Крестик и внутренние элементы модалки (точечные селекторы) */
+div.mez-inline-flex.mez-flex-col.mez-pt-\[12px\].mez-pr-\[12px\].mez-pb-\[12px\].mez-pl-\[12px\].mez-absolute.mez-right-0.mez-top-0,
+svg[aria-label="modal-close"] {
+    z-index: var(--z-modal-inner) !important;
+    position: relative !important;
+}
+
+div.mez-flex.mez-flex-col.mez-gap-\[24px\].mez-items-start.mez-pt-\[32px\].mez-pr-\[32px\].mez-pb-\[32px\].mez-pl-\[32px\],
+input[placeholder="Код"] {
+    z-index: var(--z-modal-inner) !important;
+    position: relative !important;
+}
+
+button:has(span[data-i18n-key*="send-again"]) {
+    z-index: var(--z-modal-inner) !important;
+    position: relative !important;
+}
+
+/* Модалки с верификацией (через :has, без universal *) */
+div[role="dialog"]:has(input[placeholder*="Код"]),
+div[role="dialog"]:has([data-i18n-key*="verification-modal"]),
+div[role="dialog"]:has([data-i18n-key*="code"]) {
+    z-index: var(--z-modal) !important;
+}
+
+/* i18n-spans */
+span[data-i18n-key*="verification-modal.title"],
+span[data-i18n-key*="recipient.name.value"] {
+    z-index: var(--z-modal-inner) !important;
+}
+
+/* ─── Скрытие стандартного хедера ───────────────────────────────────────────── */
+div.mez-inline-flex.mez-flex-col.mez-pr-\[32px\].mez-pl-\[32px\].border-b.border-b-themeBorderDefault.h-\[70px\] {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+/* ─── Универсальное скрытие бокового меню ───────────────────────────────────── */
+
+/* hubs (Tailwind-классы) */
+div[class*="mez-w-["],
+div[class*="min-w-["],
+.mez-min-w-\\[84px\\],
+.mez-max-w-\\[84px\\],
+[class*="mez-w-[84px]"] {
+    min-width: 28px !important;
+    max-width: 28px !important;
+    width: 28px !important;
+    flex: 0 0 28px !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    border: none !important;
+    overflow: hidden !important;
+    transition: none !important;
+}
+
+/* logistics (CSS-модули) */
+div[class*="menuContainer-menu"] {
+    min-width: 0 !important;
+    max-width: 0 !important;
+    width: 0 !important;
+    flex: 0 0 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    overflow: hidden !important;
+    background: transparent !important;
+}
+
+div[class*="menuContainer-itemNext"],
+div[class*="menuContainer-iconNext"],
+div[class*="menuContainer-textNext"],
+div[class*="menuContainer-activeNext"] {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+div[class*="menuContainer-menu"] svg,
+div[class*="menuContainer-menu"] a[data-e2e="sidebar-logo"] {
+    display: none !important;
+}
+
+/* Отступы контента */
+.mez-ml-\\[84px\\],
+[class*="ml-[84px]"],
+[style*="margin-left: 84px"] {
+    margin-left: 28px !important;
+}
+
+div[class*="menuContainer-menu"] ~ div[class*="mez-flex"] {
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+}
+
+/* ─── Наша навигационная панель (glassmorphism) ──────────────────────────────── */
+.modern-top-nav {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px 0 12px;
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.07), 0 1px 4px rgba(0, 0, 0, 0.02) !important;
+    z-index: var(--z-nav) !important;
+    box-sizing: border-box;
+    will-change: transform;
+    transform: translateZ(0);
+}
+
+#modern-custom-nav {
+    animation: none;
+}
+
+.nav-left-group,
+.nav-right-group {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.nav-left-group { min-width: 26px; }
+
+.logo-wrapper {
+    position: relative;
+    overflow: hidden;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.nav-logo {
+    height: 30px;
+    border-radius: 7px;
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.logo-wrapper:hover .nav-logo { transform: scale(0.98); }
+
+.logo-wrapper::after {
+    content: "";
+    position: absolute;
+    top: -50%;
+    left: -150%;
+    width: 50%;
+    height: 200%;
+    background: linear-gradient(
+        to right,
+        rgba(255,255,255,0) 0%,
+        rgba(255,255,255,0.6) 50%,
+        rgba(255,255,255,0) 100%
+    );
+    transform: rotate(30deg);
+    transition: none;
+    pointer-events: none;
+}
+
+.logo-wrapper:hover::after {
+    left: 150%;
+    transition: left 0.6s ease-in-out;
+}
+
+.nav-links {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    justify-content: flex-start;
+    margin-left: 12px;
+}
+
+.modern-top-nav .nav-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 13px;
+    border-radius: 10px;
+    color: #4a4a4a;
+    font-weight: 500;
+    font-size: 13px;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    background: transparent;
+    border: none;
+    white-space: nowrap;
+}
+
+.modern-top-nav .nav-item:active { opacity: 0.8; }
+
+.modern-top-nav .nav-item svg {
+    width: 20px;
+    height: 20px;
+    fill: #737373;
+    transition: fill 0.25s ease, transform 0.25s ease;
+}
+
+.modern-top-nav .nav-item:hover {
+    background-color: #ff5149;
+    color: #ffffff;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(255, 81, 73, 0.25);
+}
+
+.modern-top-nav .nav-item:hover svg {
+    fill: #ffffff;
+    transform: scale(1.1);
+}
+
+.support-btn {
+    background-color: #ff5149;
+    color: #ffffff !important;
+    padding: 6px 16px;
+    border-radius: 9px;
+    font-weight: 600;
+    font-size: 13px;
+    text-decoration: none;
+    box-shadow: 0 3px 10px rgba(255, 81, 73, 0.2);
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+/* ─── Бейджи на кнопках навигации ───────────────────────────────────────────── */
+.nav-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: #ff5149;
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 700;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    line-height: 1;
+    border: 2px solid #ffffff;
+    pointer-events: none;
+    box-sizing: border-box;
+    z-index: 1;
+}
+
+/* Бейдж на hover (белый бордер совпадает с красным фоном кнопки) */
+.modern-top-nav .nav-item:hover .nav-badge {
+    border-color: #ff5149;
+    background: #ffffff;
+    color: #ff5149;
+}
+
+/* ─── Выпадающее меню "Остальное" (справа от nav-links, слева от Поддержки) ── */
+.nav-right-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.nav-more-wrapper {
+    position: relative;
+}
+
+.nav-more-chevron {
+    transition: transform 0.2s ease;
+    flex-shrink: 0;
+    opacity: 0.6;
+}
+
+.nav-more-btn--active .nav-more-chevron {
+    transform: rotate(180deg);
+    opacity: 1;
+}
+
+/* Компактная иконка-кнопка без текста */
+.nav-more-btn {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 6px 8px;
+    border-radius: 10px;
+    border: none;
+    background: transparent;
+    color: #5a5a5a;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+    white-space: nowrap;
+}
+
+.nav-more-btn svg { fill: #737373; transition: fill 0.2s; }
+.nav-more-btn:hover,
+.nav-more-btn--active {
+    background: #f5f5f5;
+    color: #1a1a1a;
+}
+.nav-more-btn:hover svg,
+.nav-more-btn--active svg {
+    fill: #1a1a1a;
+}
+
+/* Дропдаун выровнен по правому краю кнопки */
+.nav-more-dropdown {
+    display: none;
+    flex-direction: column;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    left: auto;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+    padding: 6px;
+    min-width: 180px;
+    z-index: calc(var(--z-nav) + 1);
+    animation: dropdownFadeIn 0.18s ease forwards;
+}
+
+.nav-more-dropdown--open {
+    display: flex;
+}
+
+@keyframes dropdownFadeIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.nav-dropdown-item {
+    display: block;
+    padding: 9px 14px;
+    border-radius: 8px;
+    color: #4a4a4a;
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background 0.18s, color 0.18s;
+    white-space: nowrap;
+}
+
+.nav-dropdown-item:hover {
+    background: #fff0ef;
+    color: #ff5149;
+}
+
+.support-btn:hover {
+    background-color: #e0443d;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(255, 81, 73, 0.3);
+}
+
+/* ─── Кнопки hubs (themeControlPrimary) ─────────────────────────────────────── */
+button[class*="themeControlPrimary"],
+.mez-bg-themeControlPrimary {
+    background-color: #ff5149 !important;
+    color: #ffffff !important;
+    border-radius: 10px !important;
+    text-transform: none !important;
+    transition: all 0.2s ease !important;
+}
+
+button[class*="themeControlPrimary"]:hover {
+    box-shadow: 0 4px 12px rgba(255, 81, 73, 0.3) !important;
+    transform: translateY(-1px) !important;
+}
+
+button[class*="themeControlPrimary"] span,
+.mez-bg-themeControlPrimary span {
+    color: #ffffff !important;
+    text-transform: none !important;
+    font-weight: 500 !important;
+    letter-spacing: normal !important;
+}
+
+/* ─── Кнопки logistics ───────────────────────────────────────────────────────── */
+button[class*="__use--variant_action"],
+[class*="__use--variant_action"] {
+    background-color: #ff5149 !important;
+    border-color: #ff5149 !important;
+    color: #ffffff !important;
+}
+
+button[class*="__use--variant_action"]:hover {
+    background-color: #e0443d !important;
+    border-color: #e0443d !important;
+    box-shadow: 0 4px 12px rgba(255, 81, 73, 0.3) !important;
+    transform: translateY(-1px) !important;
+}
+
+button[class*="__use--variant_action"] span {
+    color: #ffffff !important;
+    text-transform: none !important;
+    font-weight: 500 !important;
+}
+
+button[class*="__use--variant_normal"],
+[class*="__use--variant_normal"] {
+    background-color: #ffffff !important;
+    border: 1px solid #e0e0e0 !important;
+    color: #333333 !important;
+}
+
+button[class*="__use--variant_normal"]:hover {
+    background-color: #f5f5f5 !important;
+    border-color: #d0d0d0 !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+}
+
+button[class*="__use--variant_normal"] span {
+    color: #333333 !important;
+    text-transform: none !important;
+    font-weight: 500 !important;
+}
+
+/* ─── Анимации ───────────────────────────────────────────────────────────────── */
+
+/* .mod-animate управляется JS (animateContent) — перезапускается на каждой
+   SPA-навигации через remove → reflow → add. CSS-анимация на селекторах
+   не работает при повторных переходах, т.к. нода не пересоздаётся. */
+.mod-animate {
+    animation: modFadeInUp 0.4s ease forwards !important;
+}
+
+@keyframes modFadeInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0);    }
+}
+
+@keyframes fadeInContent {
+    from { opacity: 0.7; transform: translateY(5px); }
+    to   { opacity: 1;   transform: translateY(0);   }
+}
+
+/* ─── Адаптив ────────────────────────────────────────────────────────────────── */
+@media (max-width: 1200px) {
+    .nav-links { gap: 4px; }
+    .modern-top-nav .nav-item { padding: 7px 10px; }
+}
+
+@media (max-width: 1000px) {
+    .modern-top-nav .nav-item span { display: none; }
+    .modern-top-nav .nav-item      { padding: 7px; }
+}
+
+/* ─── Таблица unified-shipment: React-proof стилизация ──────────────────────── *
+ *                                                                               *
+ * data-mod-hidden    — строка скрыта пользователем вручную (кнопка ×)          *
+ * data-mod-ship-type — тип отправления, ставит JS на <tr>                      *
+ * data-i18n-key      — воспроизводится React → CSS ::after безопасен           *
+ * ─────────────────────────────────────────────────────────────────────────────*/
+
+/* Строки, скрытые пользователем вручную */
+tr[data-mod-hidden] {
+    display: none !important;
+}
+
+/* Сброс нейтрального фона у всех бейджей типа на странице отгрузки */
+tr[data-mod-ship-type] [class*="mez-bg-themeLayerBgNeutral"] {
+    border-radius: 6px !important;
+    padding: 2px 8px !important;
+    /* neutral bg убираем — конкретный цвет выставит правило ниже */
+    background-color: transparent !important;
+}
+
+/* ── Дроп-офф (Грузоместо) → красный ────────────────────────────────────── */
+tr[data-mod-ship-type="drop"] [class*="mez-bg-themeLayerBgNeutral"] {
+    background-color: #ff4114 !important;
+}
+tr[data-mod-ship-type="drop"] [class*="mez-bg-themeLayerBgNeutral"] span,
+tr[data-mod-ship-type="drop"] [class*="mez-bg-themeLayerBgNeutral"] div {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+
+/* Переименование «Грузоместо» → «Дроп-офф» через CSS (React-proof: data-i18n-key) */
+[data-i18n-key="features.unified-shipment:shipment-type.DROPOFF"] {
+    font-size: 0 !important;    /* прячем оригинальный текст */
+    line-height: 0 !important;
+}
+[data-i18n-key="features.unified-shipment:shipment-type.DROPOFF"]::after {
+    content: 'Дроп-офф';
+    font-size: 12px;
+    line-height: 1.4;
+    color: #ffffff;
+    font-weight: 700;
+    font-family: 'Product Sans', 'Google Sans', sans-serif;
+}
+
+/* ── Утилизация → жёлтый ────────────────────────────────────────────────── */
+tr[data-mod-ship-type="util"] [class*="mez-bg-themeLayerBgNeutral"] {
+    background-color: #ffe066 !important;
+}
+tr[data-mod-ship-type="util"] [class*="mez-bg-themeLayerBgNeutral"] span,
+tr[data-mod-ship-type="util"] [class*="mez-bg-themeLayerBgNeutral"] div {
+    color: #1a1a1a !important;
+    font-weight: 700 !important;
+}
+
+/* ── Невыкуп / Клиентский возврат / Сейф-пакет → зелёный ───────────────── */
+tr[data-mod-ship-type="green"] [class*="mez-bg-themeLayerBgNeutral"] {
+    background-color: #2ecc71 !important;
+}
+tr[data-mod-ship-type="green"] [class*="mez-bg-themeLayerBgNeutral"] span,
+tr[data-mod-ship-type="green"] [class*="mez-bg-themeLayerBgNeutral"] div {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+
+/* ── Засыл → оранжевый ──────────────────────────────────────────────────── */
+tr[data-mod-ship-type="zasyl"] [class*="mez-bg-themeLayerBgNeutral"] {
+    background-color: #ff8c00 !important;
+}
+tr[data-mod-ship-type="zasyl"] [class*="mez-bg-themeLayerBgNeutral"] span,
+tr[data-mod-ship-type="zasyl"] [class*="mez-bg-themeLayerBgNeutral"] div {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+/* ── Кнопка × (скрыть строку) ───────────────────────────────────────────── */
+.mod-ship-close {
+    position: absolute;
+    top: 50%;
+    right: 6px;
+    transform: translateY(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: #b0b0b0;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+    padding: 0;
+    flex-shrink: 0;
+    z-index: 1;
+}
+
+tr:hover .mod-ship-close {
+    opacity: 1;
+}
+
+.mod-ship-close:hover {
+    background: #fff0ef !important;
+    color: #ff5149 !important;
+}
+
+/* ── Кнопка "Восстановить список" ───────────────────────────────────────── */
+.mod-ship-restore-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 12px;
+    padding: 4px 14px;
+    border-radius: 8px;
+    border: 1.5px solid #e0e0e0;
+    background: #ffffff;
+    color: #555555;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: 'Product Sans', 'Google Sans', sans-serif;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s, background 0.2s;
+    white-space: nowrap;
+}
+
+.mod-ship-restore-btn:hover {
+    border-color: #ff5149;
+    color: #ff5149;
+    background: #fff5f5;
+}
