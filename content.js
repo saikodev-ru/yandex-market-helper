@@ -59,7 +59,7 @@ let currentURL = location.href;
 const SoundQueue = {
   queue: [],
   isPlaying: false,
-  GAP_MS: 300, // задержка между звуками в очереди (мс)
+  GAP_MS: 100, // задержка между звуками в очереди (мс)
 
   /** Добавить один звук в очередь
    *  @param {string|Function} src — URL mp3 или функция осциллятора
