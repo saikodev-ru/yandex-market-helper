@@ -72,11 +72,17 @@ const PVZ_BLOCK_RULES = [
     },
   },
   {
-    // «Оплата при получении» — блокируем Яндексовский звук, воспроизводим свой post_payment.mp3
-    // из issuing-sound.js по триггеру на странице (как все остальные звуки в content.js)
+    // «Оплата при получении» — REDIRECT на наш post_payment.mp3
+    // Вместо block используем redirect: браузер прозрачно подменяет ответ,
+    // аудио-элемент сохраняет оригинальный URL → Chrome разрешает autoplay
+    // по MEI (Media Engagement Index) домена hubs.market.yandex.ru.
+    // Также redirect работает при SPA-навигации (правила активны всегда).
     id: 104,
     priority: 1,
-    action: { type: 'block' },
+    action: {
+      type: 'redirect',
+      redirect: { extensionPath: '/sounds/post_payment.mp3' },
+    },
     condition: {
       urlFilter: '||pvz-sound.s3.yandex.net/*/E2F9405756F98ED1339B540D1F604B6C.mp3',
       resourceTypes: ['media'],
