@@ -8,6 +8,7 @@ const GO_AUDIO                = chrome.runtime?.getURL('sounds/go.mp3');
 const ENTERCODE_AUDIO         = chrome.runtime?.getURL('sounds/entercode.mp3');
 const OPLATA_AUDIO            = chrome.runtime?.getURL('sounds/oplata.mp3');
 const SUCCESS_SHIP_AUDIO      = chrome.runtime?.getURL('sounds/success-ship.mp3');
+const CAMERA_AUDIO            = chrome.runtime?.getURL('sounds/camera.mp3');
 
 // === Глобальные переменные ===
 let voiceAlertsEnabled       = true;
@@ -38,6 +39,91 @@ let placementCompletePoller  = null;
 
 // Отслеживание навигации в SPA
 let currentURL = location.href;
+
+
+// ============================================================
+// === Звуковая очередь (SoundQueue) ===
+// ============================================================
+// Централизованная очередь воспроизведения звуков.
+// Все MP3-звуки добавляются в очередь и играют последовательно
+// с настраиваемой задержкой между ними, вместо одновременного
+// воспроизведения, которое создаёт "кашу" из звуков.
+//
+// Пример: china.mp3 + oplata.mp3 →
+//   china.mp3 ⏸ 300мс ⏸ oplata.mp3
+//
+// Составные звуки (oplata = success-ship + oplata) добавляются
+// через addChain() и гарантированно играют подряд.
+// ============================================================
+
+const SoundQueue = {
+  queue: [],
+  isPlaying: false,
+  GAP_MS: 300, // задержка между звуками в очереди (мс)
+
+  /** Добавить один звук в очередь
+   *  @param {string|Function} src — URL mp3 или функция осциллятора
+   *  @param {Object} options — { volume, speed, label, duration } */
+  add(src, options = {}) {
+    const { volume = 0.8, speed = 1.0, label = '', duration = 300 } = options;
+    const type = typeof src === 'function' ? 'fn' : 'mp3';
+    this.queue.push({ src, volume, speed, type, label, duration });
+    console.log(`🔊 Queue: +"${label}" (в очереди: ${this.queue.length}, играет: ${this.isPlaying})`);
+    if (!this.isPlaying) this._processNext();
+  },
+
+  /** Добавить цепочку звуков (строго по порядку)
+   *  @param {Array} items — [{ src, volume, speed, label, duration }] */
+  addChain(items) {
+    for (const item of items) {
+      const { src, volume = 0.8, speed = 1.0, label = '', duration = 300 } = item;
+      const type = typeof src === 'function' ? 'fn' : 'mp3';
+      this.queue.push({ src, volume, speed, type, label, duration });
+    }
+    console.log(`🔊 Queue: +chain[${items.length}] (в очереди: ${this.queue.length}, играет: ${this.isPlaying})`);
+    if (!this.isPlaying) this._processNext();
+  },
+
+  /** Внутренний метод — обработать следующий звук в очереди */
+  _processNext() {
+    if (this.queue.length === 0) {
+      this.isPlaying = false;
+      return;
+    }
+    this.isPlaying = true;
+    const item = this.queue.shift();
+    console.log(`🔊 Queue: ▶ "${item.label}" (осталось: ${this.queue.length})`);
+
+    if (item.type === 'fn') {
+      // Осцилляторная функция — выполняем и ждём оценочную длительность
+      try { item.src(); } catch (e) { console.warn('Queue fn error:', e); }
+      setTimeout(() => this._processNext(), (item.duration || 300) + this.GAP_MS);
+    } else {
+      // MP3-файл — воспроизводим и ждём событие ended
+      const audio = new Audio(item.src);
+      audio.volume = item.volume;
+      audio.playbackRate = item.speed;
+      audio.play().catch(err => console.warn(`Queue play error (${item.label}):`, err));
+
+      const advance = () => {
+        audio.onended = null;
+        audio.onerror = null;
+        setTimeout(() => this._processNext(), this.GAP_MS);
+      };
+      audio.onended = advance;
+      audio.onerror = advance;
+    }
+  },
+
+  /** Очистить очередь (текущий звук доиграет до конца) */
+  clear() {
+    this.queue = [];
+    console.log('🔊 Queue: очищена');
+  },
+
+  /** Количество звуков в очереди */
+  get pending() { return this.queue.length; }
+};
 
 
 // ============================================================
@@ -80,16 +166,12 @@ function playSound() {
   if (now - lastPlayTime < 5000) return;
   lastPlayTime = now;
   if (!AVITO_AUDIO) return;
-  const audio = new Audio(AVITO_AUDIO);
-  audio.volume = 0.8;
-  audio.play().catch(err => console.warn("Ошибка воспроизведения avito:", err));
+  SoundQueue.add(AVITO_AUDIO, { label: 'avito' });
 }
 
 function playCameraSound() {
   if (!CAMERA_AUDIO) return;
-  const audio = new Audio(CAMERA_AUDIO);
-  audio.volume = 0.8;
-  audio.play().catch(() => {});
+  SoundQueue.add(CAMERA_AUDIO, { label: 'camera' });
 }
 
 /** Звук «Ввести код выдачи» — воспроизводится один раз на странице,
@@ -144,10 +226,7 @@ function playLamodaSound() {
   lamodaSoundPlayed = true;
 
   if (!LAMODA_AUDIO) return;
-  const audio = new Audio(LAMODA_AUDIO);
-  audio.volume = 0.8;
-  audio.play().catch(err => console.warn("Ошибка воспроизведения Lamoda:", err));
-
+  SoundQueue.add(LAMODA_AUDIO, { label: 'lamoda' });
   setTimeout(() => { lamodaSoundPlayed = false; }, 10000);
 }
 
@@ -156,9 +235,7 @@ function playChinaSound() {
   if (now - lastChinaPlay < 5000) return;
   lastChinaPlay = now;
   if (!CHINA_AUDIO) return;
-  const audio = new Audio(CHINA_AUDIO);
-  audio.volume = 0.8;
-  audio.play().catch(err => console.warn("Ошибка воспроизведения china:", err));
+  SoundQueue.add(CHINA_AUDIO, { label: 'china' });
 }
 
 function playNoOpenSound() {
@@ -166,9 +243,7 @@ function playNoOpenSound() {
   if (now - lastNoOpenPlay < 5000) return;
   lastNoOpenPlay = now;
   if (!NOOPEN_AUDIO) return;
-  const audio = new Audio(NOOPEN_AUDIO);
-  audio.volume = 0.8;
-  audio.play().catch(err => console.warn("Ошибка воспроизведения no_open:", err));
+  SoundQueue.add(NOOPEN_AUDIO, { label: 'no_open' });
 }
 
 function playGoSound() {
@@ -176,26 +251,25 @@ function playGoSound() {
   const now = Date.now();
   if (now - lastGoPlay < 3000) return;
   lastGoPlay = now;
-  playErrorBeep();
-  setTimeout(() => {
-    if (!GO_AUDIO) return;
-    const audio = new Audio(GO_AUDIO);
-    audio.volume = 0.8;
-    audio.play().catch(err => console.warn("Ошибка воспроизведения go:", err));
-  }, 500);
+  // Ошибка-бип + go.mp3 играют в очереди по порядку
+  SoundQueue.addChain([
+    { src: playErrorBeep, duration: 300, label: 'error_beep' },
+    { src: GO_AUDIO, label: 'go' }
+  ]);
 }
 
 function playOplataSound() {
   if (!oplataSoundEnabled) return;
   if (oplataSoundPlayed) return;
   oplataSoundPlayed = true;
-  playSuccessBeep();
-  setTimeout(() => {
-    if (!OPLATA_AUDIO) return;
-    const audio = new Audio(OPLATA_AUDIO);
-    audio.volume = 0.8;
-    audio.play().catch(err => console.warn("Ошибка воспроизведения oplata:", err));
-  }, 300);
+  // Обновляем кулдаун success-ship, чтобы он не проигрался повторно
+  // из другого триггера прямо после oplata
+  lastSuccessShipPlay = Date.now();
+  // success-ship + oplata играют в очереди по порядку
+  SoundQueue.addChain([
+    { src: SUCCESS_SHIP_AUDIO, label: 'success_ship (oplata)' },
+    { src: OPLATA_AUDIO, label: 'oplata' }
+  ]);
   setTimeout(() => { oplataSoundPlayed = false; }, 10000);
 }
 
@@ -206,9 +280,7 @@ function playSuccessBeep() {
     if (now - lastSuccessShipPlay < 3000) return;
     lastSuccessShipPlay = now;
     if (!SUCCESS_SHIP_AUDIO) return;
-    const audio = new Audio(SUCCESS_SHIP_AUDIO);
-    audio.volume = 0.8;
-    audio.play().catch(err => console.warn("Ошибка воспроизведения success-ship:", err));
+    SoundQueue.add(SUCCESS_SHIP_AUDIO, { label: 'success_ship' });
   } catch (error) {
     console.log('Ошибка в playSuccessBeep:', error);
   }
@@ -220,9 +292,7 @@ function playPlacementCompleteSound() {
   if (now - lastPlacementCompletePlay < 5000) return;
   lastPlacementCompletePlay = now;
   if (!PLACEMENT_COMPLETE_AUDIO) return;
-  const audio = new Audio(PLACEMENT_COMPLETE_AUDIO);
-  audio.volume = 0.8;
-  audio.play().catch(err => console.warn("Ошибка воспроизведения завершения приёмки:", err));
+  SoundQueue.add(PLACEMENT_COMPLETE_AUDIO, { label: 'placement_complete' });
 }
 
 
@@ -1297,6 +1367,9 @@ function onSPANavigate() {
   enterCodeSoundPlayed = false;
   oplataSoundPlayed    = false;
   codeAcceptedSoundPlayed = false;
+
+  // Очищаем звуковую очередь при смене страницы
+  SoundQueue.clear();
 
   // Перезапускаем одноразовые инициализации
   initOnce();
