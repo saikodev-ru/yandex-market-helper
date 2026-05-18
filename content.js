@@ -209,6 +209,33 @@ function applyFadeIn(el) {
   setTimeout(() => el.classList.remove('mh-fadein'), 500);
 }
 
+// ─── Буфер батчинга анимаций ─────────────────────────────────────────────────
+// Вместо немедленного applyFadeIn() накапливаем элементы в массиве и
+// применяем анимацию разом в следующем requestAnimationFrame.
+// Все элементы, добавленные React-ом в одном рендер-цикле, получат
+// класс .mh-fadein одновременно → анимация плавная, без «дёрганья».
+let fadeInBatch = [];
+let fadeInRafId = 0;
+
+/** Сбросить буфер: применить анимации ко всем накопленным элементам */
+function flushFadeInBatch() {
+  const batch = fadeInBatch;
+  fadeInBatch = [];
+  fadeInRafId = 0;
+  for (const el of batch) {
+    // Элемент мог быть удалён из DOM пока ждали rAF
+    if (el.isConnected) applyFadeIn(el);
+  }
+}
+
+/** Добавить элемент в буфер для батч-анимации */
+function queueFadeIn(el) {
+  fadeInBatch.push(el);
+  if (!fadeInRafId) {
+    fadeInRafId = requestAnimationFrame(flushFadeInBatch);
+  }
+}
+
 /** Callback MutationObserver для fadeIn */
 function handleFadeInMutations(mutations) {
   if (!fadeInElementsEnabled) return;
@@ -221,7 +248,7 @@ function handleFadeInMutations(mutations) {
 
       // Сам элемент
       if (shouldFadeIn(node)) {
-        applyFadeIn(node);
+        queueFadeIn(node);
       }
 
       // Дочерние элементы первого уровня (React часто вставляет контейнеры
@@ -229,7 +256,7 @@ function handleFadeInMutations(mutations) {
       if (node.childNodes?.length > 0 && node.childNodes.length < 20) {
         for (const child of node.childNodes) {
           if (child.nodeType === 1 && shouldFadeIn(child)) {
-            applyFadeIn(child);
+            queueFadeIn(child);
           }
         }
       }
@@ -255,6 +282,12 @@ function stopFadeInObserver() {
   if (!fadeInObserver) return;
   fadeInObserver.disconnect();
   fadeInObserver = null;
+  // Очистить буфер и отменить запланированный rAF
+  fadeInBatch = [];
+  if (fadeInRafId) {
+    cancelAnimationFrame(fadeInRafId);
+    fadeInRafId = 0;
+  }
   console.log('[Saiko] FadeIn: наблюдатель остановлен');
 }
 
