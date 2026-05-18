@@ -1,79 +1,65 @@
 // issuing-sound.js — Подмена озвучки «Оплата при получении» на issuing/client-session
-// Правило 104 в background.js блокирует загрузку E2F9405756F98ED1339B540D1F604B6C.mp3
-// через declarativeNetRequest. Мы внедряем скрипт в MAIN world страницы,
-// чтобы перехватить new Audio() / play() и подставить наш post_payment.mp3.
+// Правило 104 в background.js блокирует загрузку E2F9405756F98ED1339B540D1F604B6C.mp3.
+// Мы внедряем скрипт в MAIN world — он детектит попытку воспроизвести этот звук
+// и отправляет событие. Контент-скрипт ловит его и воспроизводит наш post_payment.mp3
+// — так же, как все остальные звуки в content.js.
 (function () {
   'use strict';
 
-  // Работаем только на страницах выдачи client-session
   if (!/\/tpl-outlet\/\d{8}\/issuing\/client-session\//.test(location.pathname)) return;
 
-  const POST_PAYMENT_URL = chrome.runtime?.getURL('sounds/post_payment.mp3');
-  if (!POST_PAYMENT_URL) {
-    console.warn('[MH] Не удалось получить URL post_payment.mp3');
-    return;
-  }
-
+  const POST_PAYMENT_AUDIO = chrome.runtime?.getURL('sounds/post_payment.mp3');
   const BLOCKED_HASH = 'E2F9405756F98ED1339B540D1F604B6C';
+  const EVENT_NAME = 'mh-play-post-payment';
 
-  // Внедряем скрипт в MAIN world — он может перехватывать
-  // window.Audio и HTMLAudioElement.prototype.play в контексте страницы
+  // ── Контент-скрипт: ловим событие и играем наш звук ──
+  let played = false;
+
+  document.addEventListener(EVENT_NAME, function () {
+    if (played) return;
+    played = true;
+    console.log('[MH] Получен сигнал: заблокированный звук обнаружен, играем post_payment.mp3');
+    const audio = new Audio(POST_PAYMENT_AUDIO);
+    audio.volume = 0.8;
+    audio.play().catch(err => console.warn('[MH] Ошибка воспроизведения post_payment:', err));
+    setTimeout(() => { played = false; }, 10000);
+  });
+
+  // ── MAIN world: детектим попытку воспроизвести заблокированный звук ──
   const script = document.createElement('script');
   script.textContent = `(function() {
-    var BLOCKED = '${BLOCKED_HASH}';
-    var REPLACE = '${POST_PAYMENT_URL}';
+    var H = '${BLOCKED_HASH}';
+    var E = '${EVENT_NAME}';
+    function signal() { document.dispatchEvent(new Event(E)); }
 
-    // Перехват new Audio(url) — подменяем URL если содержит хеш заблокированного звука
-    var OrigAudio = window.Audio;
-    window.Audio = function(src) {
-      var audio = new OrigAudio();
-      if (src && typeof src === 'string' && src.indexOf(BLOCKED) !== -1) {
-        console.log('[MH] Перехвачен new Audio с заблокированным звуком, подмена на post_payment.mp3');
-        audio.src = REPLACE;
-        return audio;
-      }
-      if (src) audio.src = src;
-      return audio;
+    // Перехват new Audio(url)
+    var O = window.Audio;
+    window.Audio = function(s) {
+      var a = new O();
+      if (s && s.indexOf(H) !== -1) { signal(); return a; }
+      if (s) a.src = s;
+      return a;
     };
-    window.Audio.prototype = OrigAudio.prototype;
-    Object.defineProperty(window.Audio, 'length', { value: OrigAudio.length });
-    Object.defineProperty(window.Audio, 'name', { value: 'Audio' });
+    window.Audio.prototype = O.prototype;
 
-    // Перехват HTMLAudioElement.prototype.play — на случай если src установлен после создания
-    var origPlay = HTMLAudioElement.prototype.play;
+    // Перехват play()
+    var p = HTMLAudioElement.prototype.play;
     HTMLAudioElement.prototype.play = function() {
-      var src = this.src || this.currentSrc || '';
-      if (src.indexOf(BLOCKED) !== -1) {
-        console.log('[MH] Перехвачен play() с заблокированным звуком, подмена на post_payment.mp3');
-        this.src = REPLACE;
-        this.volume = 0.8;
-      }
-      return origPlay.call(this);
+      if ((this.src || this.currentSrc || '').indexOf(H) !== -1) signal();
+      return p.call(this);
     };
 
-    // Перехват setter src на <audio> — подменяем URL при установке
-    var origSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
-    if (origSrcDescriptor && origSrcDescriptor.set) {
+    // Перехват src setter
+    var d = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
+    if (d && d.set) {
       Object.defineProperty(HTMLMediaElement.prototype, 'src', {
-        get: origSrcDescriptor.get,
-        set: function(val) {
-          if (typeof val === 'string' && val.indexOf(BLOCKED) !== -1) {
-            console.log('[MH] Перехвачена установка src с заблокированным звуком, подмена на post_payment.mp3');
-            val = REPLACE;
-          }
-          return origSrcDescriptor.set.call(this, val);
-        },
-        configurable: true,
-        enumerable: true
+        get: d.get,
+        set: function(v) { if (typeof v === 'string' && v.indexOf(H) !== -1) signal(); return d.set.call(this, v); },
+        configurable: true, enumerable: true
       });
     }
-
-    console.log('[MH] MAIN world перехваты звука установлены');
   })();`;
 
-  // Внедряем как можно раньше — до того как Яндекс создаст Audio
   (document.head || document.documentElement).appendChild(script);
-  script.remove(); // убираем следы — скрипт уже выполнился
-
-  console.log('[MH] issuing-sound.js: MAIN world скрипт внедрён');
+  script.remove();
 })();
