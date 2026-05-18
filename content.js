@@ -127,6 +127,162 @@ const SoundQueue = {
 
 
 // ============================================================
+// === Всплывающие элементы (FadeIn) ===
+// ============================================================
+// Добавляет плавное появление (fade-in + translateY) новым
+// React-элементам при их добавлении в DOM. Управляется
+// настройкой fadeInElementsEnabled в chrome.storage.sync.
+//
+// Фильтры:
+//  — Исключаются невидимые узлы (SCRIPT, STYLE, LINK, etc.)
+//  — Исключаются слишком глубокие вложенные элементы (> 6 уровней)
+//  — Исключаются элементы внутри #modern-custom-nav
+//  — Исключаются тултипы, дропдауны и модалки (они уже анимируются)
+//  — Исключаются элементы размером < 20px (точки, иконки)
+// ============================================================
+
+let fadeInElementsEnabled = true;
+let fadeInObserver = null;
+
+// Теги, которые не нужно анимировать
+const FADEIN_IGNORE_TAGS = new Set([
+  'SCRIPT', 'STYLE', 'LINK', 'META', 'NOSCRIPT', 'BR', 'HR',
+  'SVG', 'PATH', 'CIRCLE', 'RECT', 'LINE', 'G', 'DEFS',
+  'USE', 'CLIPPATH', 'POLYGON', 'POLYLINE'
+]);
+
+// Классы/селекторы, которые не нужно анимировать (модалки, тултипы, навбар)
+const FADEIN_IGNORE_SELECTORS = [
+  '#modern-custom-nav',
+  '#modern-custom-nav *',
+  '.ReactModal__Overlay',
+  '.ReactModal__Content',
+  '[role="tooltip"]',
+  '[role="dialog"]',
+  '[data-testid="overlay"]',
+  '.mh-fadein',           // уже анимируется
+  '.mod-animate',         // уже анимируется redesign.js
+  '.barcode-generator-btn', // наша кнопка этикетки
+  '[data-saiko-identification]', // наш виджет идентификации
+];
+
+/** Проверяет, нужно ли анимировать элемент */
+function shouldFadeIn(el) {
+  if (!(el instanceof Element)) return false;
+  if (el.nodeType !== 1) return false;
+
+  // Невидимые теги
+  const tag = el.tagName;
+  if (FADEIN_IGNORE_TAGS.has(tag)) return false;
+
+  // Слишком мелкие элементы (< 20px по любой стороне)
+  // Используем offsetWidth/Height — быстрый layout-запрос только для новых элементов
+  if (el.offsetWidth < 20 || el.offsetHeight < 20) return false;
+
+  // Исключения по селекторам
+  for (const sel of FADEIN_IGNORE_SELECTORS) {
+    if (el.matches?.(sel)) return false;
+  }
+
+  // Исключаем элементы внутри исключённых контейнеров
+  // Проверяем до 4 уровней вверх
+  let parent = el.parentElement;
+  let depth = 0;
+  while (parent && depth < 4) {
+    for (const sel of FADEIN_IGNORE_SELECTORS) {
+      if (parent.matches?.(sel)) return false;
+    }
+    parent = parent.parentElement;
+    depth++;
+  }
+
+  return true;
+}
+
+/** Добавляет класс анимации и убирает его после завершения */
+function applyFadeIn(el) {
+  el.classList.add('mh-fadein');
+  el.addEventListener('animationend', () => {
+    el.classList.remove('mh-fadein');
+  }, { once: true });
+  // Страховка: убираем класс через 500мс даже если animationend не сработал
+  setTimeout(() => el.classList.remove('mh-fadein'), 500);
+}
+
+/** Callback MutationObserver для fadeIn */
+function handleFadeInMutations(mutations) {
+  if (!fadeInElementsEnabled) return;
+
+  for (const mutation of mutations) {
+    if (mutation.type !== 'childList') continue;
+
+    for (const node of mutation.addedNodes) {
+      if (node.nodeType !== 1) continue;
+
+      // Сам элемент
+      if (shouldFadeIn(node)) {
+        applyFadeIn(node);
+      }
+
+      // Дочерние элементы первого уровня (React часто вставляет контейнеры
+      // с уже готовыми детьми, и сам контейнер не проходит фильтр по размеру)
+      if (node.childNodes?.length > 0 && node.childNodes.length < 20) {
+        for (const child of node.childNodes) {
+          if (child.nodeType === 1 && shouldFadeIn(child)) {
+            applyFadeIn(child);
+          }
+        }
+      }
+    }
+  }
+}
+
+/** Запустить наблюдатель за новыми элементами */
+function startFadeInObserver() {
+  if (fadeInObserver) return;
+  if (!document.body) return;
+
+  fadeInObserver = new MutationObserver(handleFadeInMutations);
+  fadeInObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+  });
+  console.log('[Saiko] FadeIn: наблюдатель запущен');
+}
+
+/** Остановить наблюдатель */
+function stopFadeInObserver() {
+  if (!fadeInObserver) return;
+  fadeInObserver.disconnect();
+  fadeInObserver = null;
+  console.log('[Saiko] FadeIn: наблюдатель остановлен');
+}
+
+/** Инициализация настройки fadeInElementsEnabled */
+function initFadeInSetting() {
+  try {
+    chrome.storage.sync.get(['fadeInElementsEnabled'], ({ fadeInElementsEnabled: enabled }) => {
+      fadeInElementsEnabled = enabled !== false; // по умолчанию включено
+      if (fadeInElementsEnabled) startFadeInObserver();
+    });
+
+    chrome.storage.onChanged.addListener((changes) => {
+      if (!('fadeInElementsEnabled' in changes)) return;
+      fadeInElementsEnabled = changes.fadeInElementsEnabled.newValue !== false;
+      if (fadeInElementsEnabled) {
+        startFadeInObserver();
+      } else {
+        stopFadeInObserver();
+      }
+      console.log('[Saiko] FadeIn:', fadeInElementsEnabled ? 'включён' : 'выключен');
+    });
+  } catch (error) {
+    console.error('[Saiko] FadeIn: ошибка инициализации:', error);
+  }
+}
+
+
+// ============================================================
 // === Инициализация настроек ===
 // ============================================================
 
@@ -1433,6 +1589,7 @@ function handleContextInvalidation() {
 function safeInit() {
   try {
     initVoiceSettings();
+    initFadeInSetting();
     initEventListeners();
     initObservers();
     initHotkeys();
@@ -1445,6 +1602,7 @@ function safeInit() {
 // Очистка при выгрузке страницы
 window.addEventListener('beforeunload', () => {
   stopPlacementPoller();
+  stopFadeInObserver();
   if (window.__mainObserver) window.__mainObserver.disconnect();
 });
 

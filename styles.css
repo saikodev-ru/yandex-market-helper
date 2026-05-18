@@ -597,6 +597,16 @@ button[class*="__use--variant_normal"] span {
     to   { opacity: 1;   transform: translateY(0);   }
 }
 
+/* ─── Всплывающие элементы (fadeInElements) ─────────────────────────────────── */
+.mh-fadein {
+    animation: mhFadeInUp 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards !important;
+}
+
+@keyframes mhFadeInUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0);    }
+}
+
 /* ─── Адаптив ────────────────────────────────────────────────────────────────── */
 @media (max-width: 1200px) {
     .nav-links { gap: 4px; }
