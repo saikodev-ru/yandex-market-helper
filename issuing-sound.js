@@ -1,119 +1,79 @@
 // issuing-sound.js — Подмена озвучки «Оплата при получении» на issuing/client-session
 // Правило 104 в background.js блокирует загрузку E2F9405756F98ED1339B540D1F604B6C.mp3
-// через declarativeNetRequest. Мы воспроизводим свой post_payment.mp3,
-// когда на странице появляется триггерный элемент.
-// Работает так же, как все остальные звуки в content.js (new Audio + getURL).
+// через declarativeNetRequest. Мы внедряем скрипт в MAIN world страницы,
+// чтобы перехватить new Audio() / play() и подставить наш post_payment.mp3.
 (function () {
   'use strict';
 
-  const POST_PAYMENT_AUDIO = chrome.runtime?.getURL('sounds/post_payment.mp3');
+  // Работаем только на страницах выдачи client-session
+  if (!/\/tpl-outlet\/\d{8}\/issuing\/client-session\//.test(location.pathname)) return;
 
-  // Хеш заблокированного звука Яндекса — для логов
+  const POST_PAYMENT_URL = chrome.runtime?.getURL('sounds/post_payment.mp3');
+  if (!POST_PAYMENT_URL) {
+    console.warn('[MH] Не удалось получить URL post_payment.mp3');
+    return;
+  }
+
   const BLOCKED_HASH = 'E2F9405756F98ED1339B540D1F604B6C';
 
-  let postPaymentPlayed = false;
-  let observer = null;
+  // Внедряем скрипт в MAIN world — он может перехватывать
+  // window.Audio и HTMLAudioElement.prototype.play в контексте страницы
+  const script = document.createElement('script');
+  script.textContent = `(function() {
+    var BLOCKED = '${BLOCKED_HASH}';
+    var REPLACE = '${POST_PAYMENT_URL}';
 
-  // Работаем только на страницах выдачи client-session
-  function isIssuingClientSessionPage() {
-    return /\/tpl-outlet\/\d{8}\/issuing\/client-session\//.test(location.pathname);
-  }
-
-  /** Воспроизводим свой звук «Оплата при получении» с защитой от повтора */
-  function playPostPaymentSound() {
-    if (postPaymentPlayed) return;
-    postPaymentPlayed = true;
-    console.log('[MH] Воспроизведение post_payment.mp3 (замена заблокированного ' + BLOCKED_HASH + ')');
-    if (!POST_PAYMENT_AUDIO) {
-      console.warn('[MH] POST_PAYMENT_AUDIO не найден');
-      return;
-    }
-    const audio = new Audio(POST_PAYMENT_AUDIO);
-    audio.volume = 0.8;
-    audio.play().catch(err => console.warn('[MH] Ошибка воспроизведения post_payment:', err));
-    setTimeout(() => { postPaymentPlayed = false; }, 10000);
-  }
-
-  /**
-   * Ищем триггерный элемент «Оплата при получении» на странице.
-   * Яндекс показывает этот текст в элементе с data-i18n-key, когда заказ
-   * требует оплаты. Как только элемент появляется — играем наш звук.
-   */
-  const PAYMENT_TRIGGER_KEYS = [
-    'features.client-issuing-session:session-notification.PAYMENT_ON_DELIVERY.title',
-    'features.client-issuing-session:session-notification.PAYMENT_ON_DELIVERY.description',
-  ];
-
-  // Также ищем по тексту (на случай если i18n-key изменится)
-  const PAYMENT_TRIGGER_TEXTS = [
-    'Оплата при получении',
-    'Наличными или картой при получении',
-  ];
-
-  function checkForPaymentTrigger(node) {
-    if (postPaymentPlayed) return;
-
-    // Проверяем по data-i18n-key
-    for (const key of PAYMENT_TRIGGER_KEYS) {
-      const el = node.nodeType === 1 && node.matches?.(`[data-i18n-key="${key}"]`)
-        ? node
-        : node.querySelector?.(`[data-i18n-key="${key}"]`);
-      if (el) {
-        console.log('[MH] Найден триггер оплаты по data-i18n-key:', key);
-        playPostPaymentSound();
-        return;
+    // Перехват new Audio(url) — подменяем URL если содержит хеш заблокированного звука
+    var OrigAudio = window.Audio;
+    window.Audio = function(src) {
+      var audio = new OrigAudio();
+      if (src && typeof src === 'string' && src.indexOf(BLOCKED) !== -1) {
+        console.log('[MH] Перехвачен new Audio с заблокированным звуком, подмена на post_payment.mp3');
+        audio.src = REPLACE;
+        return audio;
       }
-    }
+      if (src) audio.src = src;
+      return audio;
+    };
+    window.Audio.prototype = OrigAudio.prototype;
+    Object.defineProperty(window.Audio, 'length', { value: OrigAudio.length });
+    Object.defineProperty(window.Audio, 'name', { value: 'Audio' });
 
-    // Проверяем по тексту в листовых элементах
-    const candidates = node.nodeType === 1
-      ? (node.childElementCount === 0 ? [node] : node.querySelectorAll('span, p, div'))
-      : [];
-    for (const el of candidates) {
-      if (el.childElementCount > 0) continue; // только листовые
-      const text = el.textContent?.trim();
-      if (!text) continue;
-      for (const trigger of PAYMENT_TRIGGER_TEXTS) {
-        if (text.includes(trigger)) {
-          console.log('[MH] Найден триггер оплаты по тексту:', trigger);
-          playPostPaymentSound();
-          return;
-        }
+    // Перехват HTMLAudioElement.prototype.play — на случай если src установлен после создания
+    var origPlay = HTMLAudioElement.prototype.play;
+    HTMLAudioElement.prototype.play = function() {
+      var src = this.src || this.currentSrc || '';
+      if (src.indexOf(BLOCKED) !== -1) {
+        console.log('[MH] Перехвачен play() с заблокированным звуком, подмена на post_payment.mp3');
+        this.src = REPLACE;
+        this.volume = 0.8;
       }
-    }
-  }
+      return origPlay.call(this);
+    };
 
-  function init() {
-    if (!isIssuingClientSessionPage()) return;
-
-    // Проверяем уже существующие элементы
-    checkForPaymentTrigger(document.body);
-
-    // Наблюдаем за новыми элементами
-    observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        for (const node of mutation.addedNodes) {
-          if (node.nodeType !== 1) continue;
-          checkForPaymentTrigger(node);
-        }
-      }
-    });
-
-    if (document.body) {
-      observer.observe(document.body, { childList: true, subtree: true });
-    } else {
-      document.addEventListener('DOMContentLoaded', () => {
-        observer.observe(document.body, { childList: true, subtree: true });
+    // Перехват setter src на <audio> — подменяем URL при установке
+    var origSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
+    if (origSrcDescriptor && origSrcDescriptor.set) {
+      Object.defineProperty(HTMLMediaElement.prototype, 'src', {
+        get: origSrcDescriptor.get,
+        set: function(val) {
+          if (typeof val === 'string' && val.indexOf(BLOCKED) !== -1) {
+            console.log('[MH] Перехвачена установка src с заблокированным звуком, подмена на post_payment.mp3');
+            val = REPLACE;
+          }
+          return origSrcDescriptor.set.call(this, val);
+        },
+        configurable: true,
+        enumerable: true
       });
     }
 
-    console.log('[MH] issuing-sound.js активирован на странице client-session');
-  }
+    console.log('[MH] MAIN world перехваты звука установлены');
+  })();`;
 
-  // Запускаем как можно раньше (content_script run_at: document_start)
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+  // Внедряем как можно раньше — до того как Яндекс создаст Audio
+  (document.head || document.documentElement).appendChild(script);
+  script.remove(); // убираем следы — скрипт уже выполнился
+
+  console.log('[MH] issuing-sound.js: MAIN world скрипт внедрён');
 })();
