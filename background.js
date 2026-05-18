@@ -71,6 +71,16 @@ const PVZ_BLOCK_RULES = [
       resourceTypes: ['media'],
     },
   },
+  {
+    // «Оплата при получении» — заменяем на свой post_payment.mp3
+    id: 104,
+    priority: 1,
+    action: { type: 'block' },
+    condition: {
+      urlFilter: '||pvz-sound.s3.yandex.net/*/E2F9405756F98ED1339B540D1F604B6C.mp3',
+      resourceTypes: ['media'],
+    },
+  },
 ];
 
 const PVZ_RULE_IDS = PVZ_BLOCK_RULES.map(r => r.id);

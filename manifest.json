@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "M.Helper (Маркет.Помощник)",
-  "version": "2.4",
+  "version": "2.5-beta",
   "description": "Добавляет возможности при работе с заказами Маркета",
   "permissions": [
     "storage",
@@ -47,6 +47,15 @@
         "renum.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://hubs.market.yandex.ru/tpl-outlet/*/issuing/client-session/*"
+      ],
+      "js": [
+        "issuing-sound.js"
+      ],
+      "run_at": "document_start"
     },
     {
       "matches": [
