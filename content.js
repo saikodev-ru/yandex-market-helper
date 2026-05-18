@@ -199,25 +199,30 @@ function shouldFadeIn(el) {
   return true;
 }
 
-/** Добавляет класс анимации и убирает его после завершения */
+/** Убирает класс анимации и inline-стили после завершения */
+function cleanupFadeIn(el) {
+  el.classList.remove('mh-fadein');
+  el.style.removeProperty('opacity');
+  el.style.removeProperty('transform');
+}
+
+/** Добавляет класс анимации (элемент уже скрыт через inline opacity:0) */
 function applyFadeIn(el) {
   el.classList.add('mh-fadein');
-  el.addEventListener('animationend', () => {
-    el.classList.remove('mh-fadein');
-  }, { once: true });
-  // Страховка: убираем класс через 500мс даже если animationend не сработал
-  setTimeout(() => el.classList.remove('mh-fadein'), 500);
+  el.addEventListener('animationend', () => cleanupFadeIn(el), { once: true });
+  // Страховка: убираем класс и стили через 600мс даже если animationend не сработал
+  setTimeout(() => cleanupFadeIn(el), 600);
 }
 
 // ─── Буфер батчинга анимаций ─────────────────────────────────────────────────
-// Вместо немедленного applyFadeIn() накапливаем элементы в массиве и
-// применяем анимацию разом в следующем requestAnimationFrame.
-// Все элементы, добавленные React-ом в одном рендер-цикле, получат
-// класс .mh-fadein одновременно → анимация плавная, без «дёрганья».
+// Элементы прячутся (opacity:0) сразу в коллбэке MutationObserver —
+// чтобы браузер не успел их отрисовать видимыми.
+// Анимация запускается разом в requestAnimationFrame — все элементы
+// одного рендер-цикла React всплывают синхронно.
 let fadeInBatch = [];
 let fadeInRafId = 0;
 
-/** Сбросить буфер: применить анимации ко всем накопленным элементам */
+/** Сбросить буфер: запустить анимации для всех накопленных элементов */
 function flushFadeInBatch() {
   const batch = fadeInBatch;
   fadeInBatch = [];
@@ -228,8 +233,14 @@ function flushFadeInBatch() {
   }
 }
 
-/** Добавить элемент в буфер для батч-анимации */
+/** Спрятать элемент и поставить в очередь на анимацию */
 function queueFadeIn(el) {
+  // Скрываем мгновенно (до ближайшей отрисовки), чтобы не было
+  // вспышки «видим → скрыт → анимация». Inline-стиль без !important,
+  // поэтому CSS-анимация его переопределит.
+  el.style.opacity = '0';
+  el.style.transform = 'translateY(12px)';
+
   fadeInBatch.push(el);
   if (!fadeInRafId) {
     fadeInRafId = requestAnimationFrame(flushFadeInBatch);
@@ -282,7 +293,11 @@ function stopFadeInObserver() {
   if (!fadeInObserver) return;
   fadeInObserver.disconnect();
   fadeInObserver = null;
-  // Очистить буфер и отменить запланированный rAF
+  // Очистить буфер, снять inline-стили с ожидающих элементов и отменить rAF
+  for (const el of fadeInBatch) {
+    el.style.removeProperty('opacity');
+    el.style.removeProperty('transform');
+  }
   fadeInBatch = [];
   if (fadeInRafId) {
     cancelAnimationFrame(fadeInRafId);
