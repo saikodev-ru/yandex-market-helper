@@ -1754,10 +1754,35 @@ function safeInit() {
     initEventListeners();
     initObservers();
     initHotkeys();
+    injectPvzSoundBlocker();  // MAIN world: блокируем Яндексовскую TTS
     handleContextInvalidation();
   } catch (e) {
     console.error("[Saiko] Ошибка инициализации:", e);
   }
+}
+
+// ============================================================
+// === MAIN world: блокировка Яндексовской TTS (pvz-sound) ===
+// ============================================================
+// Инжектим скрипт в MAIN world, который перехватывает
+// Audio.prototype.play и блокирует воспроизведение
+// с pvz-sound.s3.yandex.net.
+// Это страховка поверх declarativeNetRequest — даже если
+// сетевой запрос прошёл, play() будет отменён.
+// ============================================================
+
+function injectPvzSoundBlocker() {
+  // Инжектим только на страницах Яндекс.Маркета
+  if (!location.hostname.includes('market.yandex.ru')) return;
+  // Не инжектим повторно
+  if (document.documentElement.hasAttribute('data-mh-pvz-blocker')) return;
+  document.documentElement.setAttribute('data-mh-pvz-blocker', 'true');
+
+  const script = document.createElement('script');
+  script.src = chrome.runtime.getURL('issuing-sound-main.js');
+  script.onload = () => script.remove();
+  script.onerror = () => console.warn('[Saiko] Failed to inject pvz-sound blocker');
+  (document.head || document.documentElement).appendChild(script);
 }
 
 // Очистка при выгрузке страницы

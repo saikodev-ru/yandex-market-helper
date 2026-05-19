@@ -40,67 +40,39 @@ chrome.declarativeNetRequest.updateDynamicRules({
 
 // background.js
 // Управляет динамическими правилами блокировки pvz-sound.
-// Правила активны когда renumEnabled = true (озвучиваем сами — Яндекс молчит).
-// Правила снимаются когда renumEnabled = false (Яндекс озвучивает сам).
+// Правила активны когда ЛЮБАЯ из наших озвучек включена:
+//   renumEnabled (ячейки при приёмке/размещении)
+//   issuingCellVoiceEnabled (ячейка при выдаче)
+// Если обе выключены — убираем блокировку, Яндекс озвучивает сам.
 
 const PVZ_BLOCK_RULES = [
+  // Единое catch-all правило: блокируем ВСЕ mp3 с pvz-sound
+  // Наша озвучка воспроизводится из chrome-extension:// URL и не попадает.
   {
     id: 101,
     priority: 1,
     action: { type: 'block' },
     condition: {
-      regexFilter: '^https://pvz-sound\\.s3\\.yandex\\.net/.*/\\d+\\.mp3$',
-      resourceTypes: ['media'],
-    },
-  },
-  {
-    id: 102,
-    priority: 1,
-    action: { type: 'block' },
-    condition: {
-      urlFilter: '||pvz-sound.s3.yandex.net/*/60BDA2A5F8EDD309028A8E3B8B2E047A.mp3',
-      resourceTypes: ['media'],
-    },
-  },
-  {
-    id: 103,
-    priority: 1,
-    action: { type: 'block' },
-    condition: {
-      urlFilter: '||pvz-sound.s3.yandex.net/*/6AB52C2C3FB0D74D168FF69D498245CE.mp3',
-      resourceTypes: ['media'],
-    },
-  },
-  {
-    // «Оплата при получении» — REDIRECT на наш post_payment.mp3
-    // Вместо block используем redirect: браузер прозрачно подменяет ответ,
-    // аудио-элемент сохраняет оригинальный URL → Chrome разрешает autoplay
-    // по MEI (Media Engagement Index) домена hubs.market.yandex.ru.
-    // Также redirect работает при SPA-навигации (правила активны всегда).
-    id: 104,
-    priority: 1,
-    action: {
-      type: 'redirect',
-      redirect: { extensionPath: '/sounds/post_payment.mp3' },
-    },
-    condition: {
-      urlFilter: '||pvz-sound.s3.yandex.net/*/E2F9405756F98ED1339B540D1F604B6C.mp3',
+      regexFilter: '^https://pvz-sound\\.s3\\.yandex\\.net/.*\\.mp3$',
       resourceTypes: ['media'],
     },
   },
 ];
 
-const PVZ_RULE_IDS = PVZ_BLOCK_RULES.map(r => r.id);
+// Включаем старые ID для очистки при обновлении
+const PVZ_RULE_IDS = [101, 102, 103, 104];
 
-async function applyPvzRules(renumEnabled) {
-  if (renumEnabled) {
-    // Озвучка наша — блокируем Яндексовские звуки
+/** Блокируем Яндексовскую TTS когда ЛЮБАЯ из наших озвучек активна */
+async function applyPvzRules(renumEnabled, issuingCellVoiceEnabled) {
+  const shouldBlock = renumEnabled || issuingCellVoiceEnabled;
+  if (shouldBlock) {
+    // Хотя бы одна наша озвучка активна — блокируем Яндексовские звуки
     await chrome.declarativeNetRequest.updateDynamicRules({
       addRules: PVZ_BLOCK_RULES,
       removeRuleIds: PVZ_RULE_IDS,  // сначала удаляем чтобы не было дублей
     });
   } else {
-    // Озвучка отключена — убираем блокировку, Яндекс звучит сам
+    // Все наши озвучки выключены — убираем блокировку, Яндекс звучит сам
     await chrome.declarativeNetRequest.updateDynamicRules({
       addRules: [],
       removeRuleIds: PVZ_RULE_IDS,
@@ -108,13 +80,17 @@ async function applyPvzRules(renumEnabled) {
   }
 }
 
-// При старте service worker — синхронизируем правила с текущим значением
-chrome.storage.sync.get({ renumEnabled: true }, data => {
-  applyPvzRules(data.renumEnabled);
+// При старте service worker — синхронизируем правила с текущими значениями
+chrome.storage.sync.get({ renumEnabled: true, issuingCellVoiceEnabled: true }, data => {
+  applyPvzRules(data.renumEnabled, data.issuingCellVoiceEnabled);
 });
 
-// При изменении тоггла — обновляем правила мгновенно
+// При изменении любого тоггла — обновляем правила мгновенно
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== 'sync' || !('renumEnabled' in changes)) return;
-  applyPvzRules(changes.renumEnabled.newValue);
+  if (area !== 'sync') return;
+  if (!('renumEnabled' in changes) && !('issuingCellVoiceEnabled' in changes)) return;
+  // Перечитываем оба значения чтобы не рассинхронизироваться
+  chrome.storage.sync.get({ renumEnabled: true, issuingCellVoiceEnabled: true }, data => {
+    applyPvzRules(data.renumEnabled, data.issuingCellVoiceEnabled);
+  });
 });

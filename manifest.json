@@ -116,6 +116,7 @@
         "sounds/num/*.mp3",
         "sounds/other/*.mp3",
         "sounds/*.mp3",
+        "issuing-sound-main.js",
         "redesign.css",
         "ship-redesign.css"
       ],
