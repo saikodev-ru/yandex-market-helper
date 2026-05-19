@@ -62,6 +62,26 @@ const SoundQueue = {
   queue: [],
   isPlaying: false,
   GAP_MS: 100, // задержка между звуками в очереди (мс)
+  _audioCtx: null,
+  _bufferCache: {}, // кеш декодированных AudioBuffer по URL
+
+  /** Получить/создать общий AudioContext */
+  _getAudioContext() {
+    if (!this._audioCtx || this._audioCtx.state === 'closed') {
+      this._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    return this._audioCtx;
+  },
+
+  /** Декодировать MP3 в AudioBuffer (с кешированием) */
+  async _decodeAudio(url) {
+    if (this._bufferCache[url]) return this._bufferCache[url];
+    const response = await fetch(url);
+    const arrayBuffer = await response.arrayBuffer();
+    const audioBuffer = await this._getAudioContext().decodeAudioData(arrayBuffer);
+    this._bufferCache[url] = audioBuffer;
+    return audioBuffer;
+  },
 
   /** Добавить один звук в очередь
    *  @param {string|Function} src — URL mp3 или функция осциллятора
@@ -101,19 +121,57 @@ const SoundQueue = {
       try { item.src(); } catch (e) { console.warn('Queue fn error:', e); }
       setTimeout(() => this._processNext(), (item.duration || 300) + this.GAP_MS);
     } else {
-      // MP3-файл — воспроизводим и ждём событие ended
-      const audio = new Audio(item.src);
-      audio.volume = item.volume;
-      audio.playbackRate = item.speed;
-      audio.play().catch(err => console.warn(`Queue play error (${item.label}):`, err));
+      // MP3-файл — воспроизводим через AudioContext (обходит autoplay-политику)
+      this._playMp3(item);
+    }
+  },
 
-      const advance = () => {
-        audio.onended = null;
-        audio.onerror = null;
-        setTimeout(() => this._processNext(), this.GAP_MS);
-      };
-      audio.onended = advance;
-      audio.onerror = advance;
+  /** Воспроизвести MP3 через AudioContext: fetch → decode → BufferSource */
+  async _playMp3(item) {
+    let advanced = false;
+    const advance = () => {
+      if (advanced) return;
+      advanced = true;
+      setTimeout(() => this._processNext(), this.GAP_MS);
+    };
+
+    try {
+      // Декодируем (не требует запущенного контекста)
+      const audioBuffer = await this._decodeAudio(item.src);
+
+      // Резюмируем контекст если приостановлен
+      const ctx = this._getAudioContext();
+      if (ctx.state === 'suspended') await ctx.resume();
+
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.playbackRate.value = item.speed || 1.0;
+
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = item.volume ?? 0.8;
+      source.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      source.onended = advance;
+      source.start();
+
+      // Страховка: если onended не сработал
+      const duration = audioBuffer.duration / (item.speed || 1.0);
+      setTimeout(advance, (duration + 0.5) * 1000);
+    } catch (e) {
+      console.warn(`Queue AudioContext error (${item.label}):`, e, '— fallback to HTML Audio');
+      // Фолбэк на HTML Audio (если fetch/decode не сработал)
+      try {
+        const audio = new Audio(item.src);
+        audio.volume = item.volume ?? 0.8;
+        audio.playbackRate = item.speed || 1.0;
+        audio.play().catch(err => console.warn(`Queue HTML Audio error (${item.label}):`, err));
+        audio.onended = advance;
+        audio.onerror = advance;
+      } catch (fallbackErr) {
+        console.warn(`Queue complete fallback error (${item.label}):`, fallbackErr);
+        advance();
+      }
     }
   },
 
@@ -409,14 +467,32 @@ function playEnterCodeSound() {
     return;
   }
 
-  enterCodeAudio = new Audio(ENTERCODE_AUDIO);
-  enterCodeAudio.volume = 0.8;
-  enterCodeAudio.play().catch(err => console.warn("Ошибка воспроизведения entercode:", err));
+  // Воспроизводим через AudioContext (обходит autoplay-политику)
+  let sourceNode = null;
+  const play = async () => {
+    try {
+      const audioBuffer = await SoundQueue._decodeAudio(ENTERCODE_AUDIO);
+      const ctx = SoundQueue._getAudioContext();
+      if (ctx.state === 'suspended') await ctx.resume();
+
+      sourceNode = ctx.createBufferSource();
+      sourceNode.buffer = audioBuffer;
+      const gainNode = ctx.createGain();
+      gainNode.gain.value = 0.8;
+      sourceNode.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      sourceNode.start();
+      enterCodeAudio = sourceNode; // для совместимости с stopOnKey
+    } catch (e) {
+      console.warn("Ошибка воспроизведения entercode:", e);
+    }
+  };
+  play();
 
   const stopOnKey = () => {
-    if (enterCodeAudio) {
-      enterCodeAudio.pause();
-      enterCodeAudio.currentTime = 0;
+    if (sourceNode) {
+      try { sourceNode.stop(); } catch (_) {}
+      sourceNode = null;
       enterCodeAudio = null;
     }
     document.removeEventListener('keydown', stopOnKey);
