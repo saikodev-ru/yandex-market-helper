@@ -56,7 +56,6 @@ const PVZ_BLOCK_RULES = [
     action: { type: 'block' },
     condition: {
       regexFilter: '^https://pvz-sound\\.s3\\.yandex\\.net/.*/\\d+\\.mp3',
-      resourceTypes: ['media', 'xmlhttprequest'],
     },
   },
   // 102: Конкретный звук — блокируем
@@ -66,7 +65,6 @@ const PVZ_BLOCK_RULES = [
     action: { type: 'block' },
     condition: {
       urlFilter: '||pvz-sound.s3.yandex.net/*/60BDA2A5F8EDD309028A8E3B8B2E047A.mp3',
-      resourceTypes: ['media', 'xmlhttprequest'],
     },
   },
   // 103: Конкретный звук — блокируем
@@ -76,7 +74,6 @@ const PVZ_BLOCK_RULES = [
     action: { type: 'block' },
     condition: {
       urlFilter: '||pvz-sound.s3.yandex.net/*/6AB52C2C3FB0D74D168FF69D498245CE.mp3',
-      resourceTypes: ['media', 'xmlhttprequest'],
     },
   },
   // 104: «Оплата при получении» — REDIRECT на наш post_payment.mp3
@@ -92,7 +89,6 @@ const PVZ_BLOCK_RULES = [
     },
     condition: {
       urlFilter: '||pvz-sound.s3.yandex.net/*/E2F9405756F98ED1339B540D1F604B6C.mp3',
-      resourceTypes: ['media', 'xmlhttprequest'],
     },
   },
 ];

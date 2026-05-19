@@ -1,14 +1,11 @@
 // issuing-sound-main.js
-// MAIN world скрипт — перехватывает Audio.prototype.play и fetch
+// MAIN world скрипт — перехватывает Audio.prototype.play, fetch и XMLHttpRequest
 // и блокирует воспроизведение конкретных Яндексовских звуков,
 // которые конфликтуют с нашей озвучкой.
 // Остальные звуки Яндекса (бипы, уведомления) НЕ блокируются.
 //
 // Страховка поверх declarativeNetRequest: даже если сетевой запрос
-// прошёл (правило не сработало), play()/fetch() будет отменён.
-//
-// Также принимает запросы на воспроизведение от content script
-// через custom events — MAIN world использует MEI домена для autoplay.
+// прошёл (правило не сработало), play()/fetch()/XHR будет отменён.
 
 (function() {
   'use strict';
@@ -48,7 +45,7 @@
     return origPlay.call(this);
   };
 
-  // ─── Перехват fetch — блокируем загрузку MP3 через fetch + AudioContext ──
+  // ─── Перехват fetch ───────────────────────────────────────────────
   const origFetch = window.fetch;
   window.fetch = function(input, init) {
     const url = typeof input === 'string' ? input :
@@ -56,8 +53,6 @@
                 String(input);
     if (shouldBlock(url)) {
       console.log('[Saiko] BLOCKED Yandex sound fetch():', url);
-      // Возвращаем пустой Response — Yandex код не падает,
-      // но decodeAudioData получит невалидные данные и ничего не воспроизведёт
       return Promise.resolve(new Response(null, {
         status: 200,
         statusText: 'OK',
@@ -67,47 +62,39 @@
     return origFetch.apply(this, arguments);
   };
 
-  // ─── Воспроизведение звуков от content script ──────────────────────
-  // Content script работает в изолированном мире и не получает MEI домена.
-  // MAIN world получает MEI hubs.market.yandex.ru → autoplay разрешён.
-  // Content script отправляет saiko-play-audio, мы играем через new Audio()
-  // и отчитываемся через saiko-audio-done.
-  document.addEventListener('saiko-play-audio', function(e) {
-    const { url, volume, callbackId } = e.detail;
-    let reported = false;
-
-    const reportDone = () => {
-      if (reported) return;
-      reported = true;
-      document.dispatchEvent(new CustomEvent('saiko-audio-done', {
-        detail: { callbackId }
-      }));
-    };
-
-    try {
-      const audio = new Audio(url);
-      audio.volume = volume ?? 0.8;
-
-      audio.onended = reportDone;
-      audio.onerror = () => {
-        console.warn('[Saiko] MAIN play error:', url);
-        reportDone();
-      };
-
-      const p = audio.play();
-      if (p && p.catch) {
-        p.catch(err => {
-          console.warn('[Saiko] MAIN play rejected:', err.name, err.message);
-          reportDone();
-        });
-      }
-
-      // Страховка: 5 сек максимум
-      setTimeout(reportDone, 5000);
-    } catch (_) {
-      reportDone();
+  // ─── Перехват XMLHttpRequest ──────────────────────────────────────
+  // Яндекс может грузить MP3 через XHR + AudioContext.decodeAudioData
+  const origXHROpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    if (shouldBlock(url)) {
+      // Помечаем запрос — в send() просто не отправляем
+      this._saikoBlocked = true;
+      console.log('[Saiko] BLOCKED Yandex sound XHR:', url);
     }
-  });
+    return origXHROpen.apply(this, arguments);
+  };
 
-  console.log('[Saiko] MAIN world: Audio.prototype.play + fetch intercepted + play-audio listener');
+  const origXHRSend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function() {
+    if (this._saikoBlocked) {
+      // Имитируем успешный ответ с пустыми данными
+      Object.defineProperty(this, 'readyState', { value: 4, writable: true });
+      Object.defineProperty(this, 'status', { value: 200, writable: true });
+      Object.defineProperty(this, 'response', { value: new ArrayBuffer(0), writable: true });
+      Object.defineProperty(this, 'responseText', { value: '', writable: true });
+      // Вызываем обработчики асинхронно
+      const self = this;
+      setTimeout(() => {
+        if (typeof self.onreadystatechange === 'function') self.onreadystatechange();
+        if (typeof self.onload === 'function') self.onload();
+        if (typeof self.onloadend === 'function') self.onloadend();
+        self.dispatchEvent(new Event('load'));
+        self.dispatchEvent(new Event('loadend'));
+      }, 0);
+      return;
+    }
+    return origXHRSend.apply(this, arguments);
+  };
+
+  console.log('[Saiko] MAIN world: Audio.prototype.play + fetch + XHR intercepted');
 })();
