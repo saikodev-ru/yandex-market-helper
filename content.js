@@ -539,7 +539,8 @@ function playOplataSound() {
   setTimeout(() => { oplataSoundPlayed = false; }, 10000);
 }
 
-/** Звук «Оплата при получении» — вызывается из MAIN world через событие */
+/** Звук «Оплата при получении» — вызывается из MAIN world через событие
+ *  ИЛИ через DOM-триггер (обнаружение «Терминал / наличные» / «Привязанной картой») */
 function playPostPaymentSound() {
   if (!voiceAlertsEnabled) return;
   if (postPaymentPlayed) return;
@@ -1067,6 +1068,19 @@ function checkNodeForTriggers(node) {
       }
     }
 
+    // --- Оплата при получении (COD) ---
+    // Определяем по DOM: «Терминал / наличные» или «Привязанной картой»
+    // означает что заказ с оплатой при получении — проигрываем post_payment.mp3
+    for (const el of leafElements(node)) {
+      const t = el.textContent.trim();
+      if (!el.hasAttribute("data-postpayment-played") &&
+          (t === "Терминал / наличные" || t === "Привязанной картой")) {
+        playPostPaymentSound();
+        el.setAttribute("data-postpayment-played", "true");
+        break;
+      }
+    }
+
     // --- Оплата прошла успешно ---
     const paymentEl = findByKey(node, 'features.client-issuing-session:session-notification.PAYMENT_SUCCESS.title');
     if (paymentEl && !paymentEl.hasAttribute("data-payment-played")) {
@@ -1140,6 +1154,16 @@ function initialTriggerScan() {
     if (el.childElementCount === 0 && !el.hasAttribute("data-china-played") && el.textContent.includes("Из-за рубежа, нельзя вскрывать")) {
       playChinaSound();
       el.setAttribute("data-china-played", "true");
+    }
+  });
+
+  // Оплата при получении (COD) — «Терминал / наличные» или «Привязанной картой»
+  document.querySelectorAll('span, p, div, td, li').forEach(el => {
+    const t = el.textContent.trim();
+    if (el.childElementCount === 0 && !el.hasAttribute("data-postpayment-played") &&
+        (t === "Терминал / наличные" || t === "Привязанной картой")) {
+      playPostPaymentSound();
+      el.setAttribute("data-postpayment-played", "true");
     }
   });
 }
@@ -1754,8 +1778,10 @@ function onSPANavigate() {
   codeAcceptedSoundPlayed = false;
   // _lastCellSpoken НЕ сбрасываем — анти-дупликация по номеру ячейки + 5сек окно
 
-  // Очищаем звуковую очередь при смене страницы
-  SoundQueue.clear();
+  // ВНИМАНИЕ: SoundQueue.clear() НЕ делаем здесь!
+  // Очистка очереди перенесена в интервал ниже — сразу при смене URL,
+  // ДО 300мс задержки. Иначе MutationObserver успевает добавить звуки
+  // (no_open, post_payment, ячейка) за эти 300мс, а потом clear() их убивает.
 
   // Перезапускаем одноразовые инициализации
   initOnce();
@@ -1776,6 +1802,12 @@ let _lastNavURL = '';
 setInterval(() => {
   if (location.href !== currentURL) {
     currentURL = location.href;
+    // Очищаем очередь СРАЗУ при смене URL — до того как
+    // MutationObserver начнёт добавлять звуки новой страницы.
+    // Раньше clear() был в onSPANavigate() после 300мс задержки,
+    // и убивал звуки (no_open, post_payment), уже добавленные
+    // MutationObserver за эти 300мс.
+    SoundQueue.clear();
     // Небольшая задержка, чтобы React успел обновить document.title
     // и все pushState/replaceState отработали
     setTimeout(() => {
