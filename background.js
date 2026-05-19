@@ -39,21 +39,25 @@ chrome.declarativeNetRequest.updateDynamicRules({
 });
 
 // background.js
-// Управляет динамическими правилами блокировки pvz-sound.
+// Управляет динамическими правилами блокировки Яндексовской TTS.
+// Блокируем ТОЛЬКО voice_generated_prod — это сгенерированная
+// Яндексом озвучка ячейки выдачи, которая конфликтует с нашей.
+// Остальные звуки (бипы, уведомления) НЕ блокируются.
 // Правила активны когда ЛЮБАЯ из наших озвучек включена:
 //   renumEnabled (ячейки при приёмке/размещении)
 //   issuingCellVoiceEnabled (ячейка при выдаче)
 // Если обе выключены — убираем блокировку, Яндекс озвучивает сам.
 
 const PVZ_BLOCK_RULES = [
-  // Единое catch-all правило: блокируем ВСЕ mp3 с pvz-sound
-  // Наша озвучка воспроизводится из chrome-extension:// URL и не попадает.
+  // Блокируем ТОЛЬКО TTS-озвучку Яндекса (voice_generated_prod).
+  // Это сгенерированные голосовые файлы, которые дублируют нашу озвучку ячеек.
+  // Остальные звуки уведомлений (бипы и т.д.) не трогаем.
   {
     id: 101,
     priority: 1,
     action: { type: 'block' },
     condition: {
-      regexFilter: '^https://pvz-sound\\.s3\\.yandex\\.net/.*\\.mp3$',
+      regexFilter: '^https://pvz-sound\\.s3\\.yandex\\.net/voice_generated_prod/.*\\.mp3$',
       resourceTypes: ['media'],
     },
   },
