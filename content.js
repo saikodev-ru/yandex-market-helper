@@ -528,24 +528,46 @@ function playPlacementCompleteSound() {
 // Воспроизводится ровно 1 раз за страницу, не повторяется.
 // ============================================================
 
-/** Строит последовательность MP3-файлов для озвучки числа ячейки */
+/** Строит последовательность MP3-файлов для озвучки числа ячейки.
+ *  Если есть готовый файл (N.mp3) — использует его напрямую.
+ *  Иначе — разбирает на имеющиеся компоненты (сотни + десятки + единицы). */
 function buildCellNumberSequence(num) {
   const MP3_PATH = 'sounds/num/';
   const url = n => chrome.runtime.getURL(`${MP3_PATH}${n}.mp3`);
+
+  // Доступные числа: 1–144, 200, 300, 400
+  const AVAILABLE = new Set();
+  for (let i = 1; i <= 144; i++) AVAILABLE.add(i);
+  AVAILABLE.add(200);
+  AVAILABLE.add(300);
+  AVAILABLE.add(400);
+
+  // Прямой файл есть — используем сразу
+  if (AVAILABLE.has(num)) return [url(num)];
+
+  // Иначе — разбираем на компоненты
   const out = [];
-  if (num <= 20) {
-    out.push(url(num));
-  } else if (num < 100) {
-    out.push(url(Math.floor(num / 10) * 10));
-    if (num % 10) out.push(url(num % 10));
-  } else if (num < 1000) {
-    out.push(url(Math.floor(num / 100) * 100));
-    if (num % 100) out.push(...buildCellNumberSequence(num % 100));
-  } else {
-    // 1000+ — озвучиваем по цифрам
-    const digits = String(num).split('');
-    for (const d of digits) out.push(url(parseInt(d)));
+  const hundreds = Math.floor(num / 100) * 100;
+  const remainder = num - hundreds;
+
+  if (hundreds > 0) {
+    if (AVAILABLE.has(hundreds)) {
+      out.push(url(hundreds));
+    } else {
+      // Сотни выше 400 — по цифрам
+      for (const d of String(Math.floor(num / 100))) out.push(url(parseInt(d)));
+    }
   }
+
+  if (remainder > 0) {
+    out.push(...buildCellNumberSequence(remainder));
+  }
+
+  // Если ничего не собрали (число = 0 или ошибочное) — по цифрам
+  if (out.length === 0 && num > 0) {
+    for (const d of String(num).split('')) out.push(url(parseInt(d)));
+  }
+
   return out;
 }
 
@@ -587,9 +609,9 @@ function trySpeakIssuingCell(rootNode) {
   console.log(`[Saiko] Озвучка ячейки выдачи: ${cellNumber}`);
 
   const sequence = buildCellNumberSequence(cellNumber);
-  // Добавляем бип + число как приоритетную цепочку
+  // Добавляем мягкий сигнал + число как приоритетную цепочку
   const chain = [
-    { src: playScanBeep, duration: 300, label: 'cell_beep' },
+    { src: playCellChime, duration: 400, label: 'cell_chime' },
   ];
   for (let i = 0; i < sequence.length; i++) {
     chain.push({ src: sequence[i], label: `cell_${i}`, speed: 1.1 });
@@ -666,6 +688,31 @@ function playScanBeep() {
       resume();
     }
   } catch (e) { console.log('Ошибка playScanBeep:', e); }
+}
+
+/** Мягкий колокольчик перед озвучкой ячейки выдачи */
+function playCellChime() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // Два мягких тона — как тихий колокольчик
+    _chimeTone(ctx, 0,    880, 0.25);
+    _chimeTone(ctx, 0.15, 660, 0.18);
+  } catch (e) { console.log('Ошибка playCellChime:', e); }
+}
+
+/** Один тон колокольчика — плавное нарастание и мягкое затухание */
+function _chimeTone(ctx, startTime, freq, gainPeak) {
+  const osc  = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.type = 'sine';  // мягкая синусоида вместо резкого square
+  osc.frequency.setValueAtTime(freq, ctx.currentTime + startTime);
+  gain.gain.setValueAtTime(0, ctx.currentTime + startTime);
+  gain.gain.linearRampToValueAtTime(gainPeak, ctx.currentTime + startTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + startTime + 0.35);
+  osc.start(ctx.currentTime + startTime);
+  osc.stop(ctx.currentTime  + startTime + 0.4);
 }
 
 function _scanBeepSeq(ctx) {
