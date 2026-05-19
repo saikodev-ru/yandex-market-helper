@@ -39,25 +39,59 @@ chrome.declarativeNetRequest.updateDynamicRules({
 });
 
 // background.js
-// Управляет динамическими правилами блокировки Яндексовской TTS.
-// Блокируем ТОЛЬКО voice_generated_prod — это сгенерированная
-// Яндексом озвучка ячейки выдачи, которая конфликтует с нашей.
-// Остальные звуки (бипы, уведомления) НЕ блокируются.
+// Управляет динамическими правилами блокировки конкретных Яндексовских звуков.
+// Блокируем ТОЛЬКО конкретные MP3 по хэшам/паттернам, которые конфликтуют
+// с нашей озвучкой. Остальные звуки Яндекса (бипы, уведомления) НЕ трогаем.
 // Правила активны когда ЛЮБАЯ из наших озвучек включена:
 //   renumEnabled (ячейки при приёмке/размещении)
 //   issuingCellVoiceEnabled (ячейка при выдаче)
 // Если обе выключены — убираем блокировку, Яндекс озвучивает сам.
 
 const PVZ_BLOCK_RULES = [
-  // Блокируем ТОЛЬКО TTS-озвучку Яндекса (voice_generated_prod).
-  // Это сгенерированные голосовые файлы, которые дублируют нашу озвучку ячеек.
-  // Остальные звуки уведомлений (бипы и т.д.) не трогаем.
+  // 101: Озвучка цифр (номер ячейки) — Яндекс генерирует /{path}/{N}.mp3
+  // Блокируем, т.к. мы озвучиваем сами через sounds/num/
   {
     id: 101,
     priority: 1,
     action: { type: 'block' },
     condition: {
-      regexFilter: '^https://pvz-sound\\.s3\\.yandex\\.net/voice_generated_prod/.*\\.mp3$',
+      regexFilter: '^https://pvz-sound\\.s3\\.yandex\\.net/.*/\\d+\\.mp3$',
+      resourceTypes: ['media'],
+    },
+  },
+  // 102: Конкретный звук — блокируем
+  {
+    id: 102,
+    priority: 1,
+    action: { type: 'block' },
+    condition: {
+      urlFilter: '||pvz-sound.s3.yandex.net/*/60BDA2A5F8EDD309028A8E3B8B2E047A.mp3',
+      resourceTypes: ['media'],
+    },
+  },
+  // 103: Конкретный звук — блокируем
+  {
+    id: 103,
+    priority: 1,
+    action: { type: 'block' },
+    condition: {
+      urlFilter: '||pvz-sound.s3.yandex.net/*/6AB52C2C3FB0D74D168FF69D498245CE.mp3',
+      resourceTypes: ['media'],
+    },
+  },
+  // 104: «Оплата при получении» — REDIRECT на наш post_payment.mp3
+  // Вместо block используем redirect: браузер прозрачно подменяет ответ,
+  // аудио-элемент сохраняет оригинальный URL → Chrome разрешает autoplay
+  // по MEI (Media Engagement Index) домена hubs.market.yandex.ru.
+  {
+    id: 104,
+    priority: 1,
+    action: {
+      type: 'redirect',
+      redirect: { extensionPath: '/sounds/post_payment.mp3' },
+    },
+    condition: {
+      urlFilter: '||pvz-sound.s3.yandex.net/*/E2F9405756F98ED1339B540D1F604B6C.mp3',
       resourceTypes: ['media'],
     },
   },
