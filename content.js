@@ -9,6 +9,7 @@ const ENTERCODE_AUDIO         = chrome.runtime?.getURL('sounds/entercode.mp3');
 const OPLATA_AUDIO            = chrome.runtime?.getURL('sounds/oplata.mp3');
 const SUCCESS_SHIP_AUDIO      = chrome.runtime?.getURL('sounds/success-ship.mp3');
 const CAMERA_AUDIO            = chrome.runtime?.getURL('sounds/camera.mp3');
+const POST_PAYMENT_AUDIO      = chrome.runtime?.getURL('sounds/post_payment.mp3');
 
 // === Глобальные переменные ===
 let voiceAlertsEnabled       = true;
@@ -30,6 +31,7 @@ let lastSuccessShipPlay      = 0;
 
 let enterCodeSoundPlayed     = false;
 let oplataSoundPlayed        = false;
+let postPaymentPlayed        = false; // «Оплата при получении» — 1 раз за страницу
 let lamodaSoundPlayed        = false;
 let codeAcceptedSoundPlayed  = false;
 let issuingCellVoiceEnabled  = true;
@@ -535,6 +537,16 @@ function playOplataSound() {
     { src: OPLATA_AUDIO, label: 'oplata' }
   ]);
   setTimeout(() => { oplataSoundPlayed = false; }, 10000);
+}
+
+/** Звук «Оплата при получении» — вызывается из MAIN world через событие */
+function playPostPaymentSound() {
+  if (!voiceAlertsEnabled) return;
+  if (postPaymentPlayed) return;
+  postPaymentPlayed = true;
+  if (!POST_PAYMENT_AUDIO) return;
+  SoundQueue.add(POST_PAYMENT_AUDIO, { label: 'post_payment' });
+  setTimeout(() => { postPaymentPlayed = false; }, 10000);
 }
 
 function playSuccessBeep() {
@@ -1736,6 +1748,7 @@ function onSPANavigate() {
   lamodaSoundPlayed    = false;
   enterCodeSoundPlayed = false;
   oplataSoundPlayed    = false;
+  postPaymentPlayed    = false;
   codeAcceptedSoundPlayed = false;
   issuingCellSpoken    = false;
 
@@ -1820,7 +1833,8 @@ function safeInit() {
     initEventListeners();
     initObservers();
     initHotkeys();
-    // SoundQueue теперь использует new Audio() — MEI позволяет без жеста
+    // MAIN world уведомляет когда Яндекс пытается проиграть «Оплата при получении»
+    document.addEventListener('saiko-post-payment', playPostPaymentSound);
     injectPvzSoundBlocker();  // MAIN world: блокируем Яндексовскую TTS
     handleContextInvalidation();
   } catch (e) {

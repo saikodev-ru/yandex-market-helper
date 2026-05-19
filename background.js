@@ -76,17 +76,13 @@ const PVZ_BLOCK_RULES = [
       urlFilter: '||pvz-sound.s3.yandex.net/*/6AB52C2C3FB0D74D168FF69D498245CE.mp3',
     },
   },
-  // 104: «Оплата при получении» — REDIRECT на наш post_payment.mp3
-  // Вместо block используем redirect: браузер прозрачно подменяет ответ,
-  // аудио-элемент сохраняет оригинальный URL → Chrome разрешает autoplay
-  // по MEI (Media Engagement Index) домена hubs.market.yandex.ru.
+  // 104: «Оплата при получении» — BLOCK
+  // Вместо redirect: MAIN world перехватывает play() и отправляет
+  // событие в content script, чтобы post_payment.mp3 играло в SoundQueue
   {
     id: 104,
     priority: 1,
-    action: {
-      type: 'redirect',
-      redirect: { extensionPath: '/sounds/post_payment.mp3' },
-    },
+    action: { type: 'block' },
     condition: {
       urlFilter: '||pvz-sound.s3.yandex.net/*/E2F9405756F98ED1339B540D1F604B6C.mp3',
     },

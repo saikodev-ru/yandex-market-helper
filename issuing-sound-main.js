@@ -7,9 +7,9 @@
 // Страховка поверх declarativeNetRequest: даже если сетевой запрос
 // прошёл (правило не сработало), play()/fetch()/XHR будет отменён.
 //
-// ВАЖНО: E2F9405756F98ED1339B540D1F604B6C НЕ блокируется здесь —
-// DNR правило 104 делает REDIRECT на post_payment.mp3.
-// Если блокировать play(), редирект не сработает.
+// E2F9405756F98ED1339B540D1F604B6C — «Оплата при получении»:
+// вместо полной блокировки отправляем событие в content script,
+// чтобы post_payment.mp3 проигралось через SoundQueue.
 
 (function() {
   'use strict';
@@ -17,31 +17,41 @@
   const BLOCKED_HOST = 'pvz-sound.s3.yandex.net';
 
   // Хэши MP3, которые нужно ПОЛНОСТЬЮ БЛОКИРОВАТЬ
-  // E2F94... НЕ здесь — он редиректится на наш звук через DNR правило 104
   const BLOCKED_HASHES = [
     '60BDA2A5F8EDD309028A8E3B8B2E047A',
     '6AB52C2C3FB0D74D168FF69D498245CE',
   ];
 
+  // Хэш «Оплата при получении» — блокируем play(), но уведомляем content script
+  const POST_PAYMENT_HASH = 'E2F9405756F98ED1339B540D1F604B6C';
+
   // Паттерн озвучки цифр: /{path}/{N}.mp3 (номер ячейки)
-  // Учитываем возможные query-параметры (?v=1 и т.п.)
   const DIGIT_MP3_RE = /\/\d+\.mp3(\?.*)?$/;
 
   /** Проверяет, нужно ли блокировать воспроизведение этого URL */
   function shouldBlock(url) {
     if (!url || !url.includes(BLOCKED_HOST)) return false;
-    // Проверяем конкретные хэши
     for (const hash of BLOCKED_HASHES) {
       if (url.includes(hash)) return true;
     }
-    // Проверяем паттерн озвучки цифр (номер ячейки)
     if (DIGIT_MP3_RE.test(url)) return true;
     return false;
+  }
+
+  /** Проверяет, это URL «Оплата при получении» */
+  function isPostPayment(url) {
+    return url && url.includes(BLOCKED_HOST) && url.includes(POST_PAYMENT_HASH);
   }
 
   // ─── Перехват Audio.prototype.play ────────────────────────────────
   const origPlay = Audio.prototype.play;
   Audio.prototype.play = function() {
+    // «Оплата при получении» — блокируем, но уведомляем content script
+    if (isPostPayment(this.src)) {
+      console.log('[Saiko] BLOCKED Yandex post-payment, routing to SoundQueue:', this.src);
+      document.dispatchEvent(new CustomEvent('saiko-post-payment'));
+      return Promise.resolve();
+    }
     if (shouldBlock(this.src)) {
       console.log('[Saiko] BLOCKED Yandex sound play():', this.src);
       return Promise.resolve();
@@ -55,6 +65,15 @@
     const url = typeof input === 'string' ? input :
                 input instanceof Request ? input.url :
                 String(input);
+    if (isPostPayment(url)) {
+      console.log('[Saiko] BLOCKED Yandex post-payment fetch, routing to SoundQueue:', url);
+      document.dispatchEvent(new CustomEvent('saiko-post-payment'));
+      return Promise.resolve(new Response(null, {
+        status: 200,
+        statusText: 'OK',
+        headers: { 'Content-Type': 'audio/mpeg' },
+      }));
+    }
     if (shouldBlock(url)) {
       console.log('[Saiko] BLOCKED Yandex sound fetch():', url);
       return Promise.resolve(new Response(null, {
@@ -67,11 +86,12 @@
   };
 
   // ─── Перехват XMLHttpRequest ──────────────────────────────────────
-  // Яндекс может грузить MP3 через XHR + AudioContext.decodeAudioData
   const origXHROpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function(method, url) {
-    if (shouldBlock(url)) {
-      // Помечаем запрос — в send() просто не отправляем
+    if (isPostPayment(url)) {
+      this._saikoPostPayment = true;
+      console.log('[Saiko] BLOCKED Yandex post-payment XHR, routing to SoundQueue:', url);
+    } else if (shouldBlock(url)) {
       this._saikoBlocked = true;
       console.log('[Saiko] BLOCKED Yandex sound XHR:', url);
     }
@@ -80,13 +100,14 @@
 
   const origXHRSend = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.send = function() {
-    if (this._saikoBlocked) {
-      // Имитируем успешный ответ с пустыми данными
+    if (this._saikoPostPayment) {
+      document.dispatchEvent(new CustomEvent('saiko-post-payment'));
+    }
+    if (this._saikoPostPayment || this._saikoBlocked) {
       Object.defineProperty(this, 'readyState', { value: 4, writable: true });
       Object.defineProperty(this, 'status', { value: 200, writable: true });
       Object.defineProperty(this, 'response', { value: new ArrayBuffer(0), writable: true });
       Object.defineProperty(this, 'responseText', { value: '', writable: true });
-      // Вызываем обработчики асинхронно
       const self = this;
       setTimeout(() => {
         if (typeof self.onreadystatechange === 'function') self.onreadystatechange();
