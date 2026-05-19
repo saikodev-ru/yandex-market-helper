@@ -6,6 +6,9 @@
 //
 // Страховка поверх declarativeNetRequest: даже если сетевой запрос
 // прошёл (правило не сработало), play()/fetch() будет отменён.
+//
+// Также принимает запросы на воспроизведение от content script
+// через custom events — MAIN world использует MEI домена для autoplay.
 
 (function() {
   'use strict';
@@ -64,5 +67,47 @@
     return origFetch.apply(this, arguments);
   };
 
-  console.log('[Saiko] MAIN world: Audio.prototype.play + fetch intercepted (specific pvz-sound hashes + digit MP3s blocked)');
+  // ─── Воспроизведение звуков от content script ──────────────────────
+  // Content script работает в изолированном мире и не получает MEI домена.
+  // MAIN world получает MEI hubs.market.yandex.ru → autoplay разрешён.
+  // Content script отправляет saiko-play-audio, мы играем через new Audio()
+  // и отчитываемся через saiko-audio-done.
+  document.addEventListener('saiko-play-audio', function(e) {
+    const { url, volume, callbackId } = e.detail;
+    let reported = false;
+
+    const reportDone = () => {
+      if (reported) return;
+      reported = true;
+      document.dispatchEvent(new CustomEvent('saiko-audio-done', {
+        detail: { callbackId }
+      }));
+    };
+
+    try {
+      const audio = new Audio(url);
+      audio.volume = volume ?? 0.8;
+
+      audio.onended = reportDone;
+      audio.onerror = () => {
+        console.warn('[Saiko] MAIN play error:', url);
+        reportDone();
+      };
+
+      const p = audio.play();
+      if (p && p.catch) {
+        p.catch(err => {
+          console.warn('[Saiko] MAIN play rejected:', err.name, err.message);
+          reportDone();
+        });
+      }
+
+      // Страховка: 5 сек максимум
+      setTimeout(reportDone, 5000);
+    } catch (_) {
+      reportDone();
+    }
+  });
+
+  console.log('[Saiko] MAIN world: Audio.prototype.play + fetch intercepted + play-audio listener');
 })();

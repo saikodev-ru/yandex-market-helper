@@ -108,7 +108,9 @@ const SoundQueue = {
     }
   },
 
-  /** Воспроизвести MP3 через new Audio() — работает с MEI, без жеста */
+  /** Воспроизвести MP3 через MAIN world — использует MEI домена для autoplay.
+   *  Content script в изолированном мире не получает MEI домена,
+   *  поэтому делегируем play() в MAIN world через custom events. */
   _playMp3(item) {
     let advanced = false;
     const advance = () => {
@@ -118,29 +120,29 @@ const SoundQueue = {
     };
 
     try {
-      const audio = new Audio(item.src);
-      audio.volume = item.volume ?? 0.8;
-      if (item.speed && item.speed !== 1.0) {
-        audio.playbackRate = item.speed;
-      }
+      const callbackId = 'sq_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
 
-      audio.onended = advance;
-      audio.onerror = () => {
-        console.warn(`Queue play error (${item.label}): audio error`);
+      const onDone = (e) => {
+        if (e.detail.callbackId !== callbackId) return;
+        document.removeEventListener('saiko-audio-done', onDone);
         advance();
       };
+      document.addEventListener('saiko-audio-done', onDone);
 
-      const playPromise = audio.play();
-      // play() может вернуть Promise — обрабатываем NotAllowedError
-      if (playPromise && typeof playPromise.catch === 'function') {
-        playPromise.catch(e => {
-          console.warn(`Queue play error (${item.label}):`, e.name, e.message);
-          advance();
-        });
-      }
+      // Отправляем запрос в MAIN world
+      document.dispatchEvent(new CustomEvent('saiko-play-audio', {
+        detail: {
+          url: item.src,
+          volume: item.volume ?? 0.8,
+          callbackId
+        }
+      }));
 
-      // Страховка: если onended не сработал (5 сек максимум)
-      setTimeout(advance, 5000);
+      // Страховка: если MAIN world не ответил (5 сек)
+      setTimeout(() => {
+        document.removeEventListener('saiko-audio-done', onDone);
+        advance();
+      }, 5000);
     } catch (e) {
       console.warn(`Queue play error (${item.label}):`, e);
       advance();
