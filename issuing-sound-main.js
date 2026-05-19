@@ -1,11 +1,11 @@
 // issuing-sound-main.js
-// MAIN world скрипт — перехватывает Audio.prototype.play
+// MAIN world скрипт — перехватывает Audio.prototype.play и fetch
 // и блокирует воспроизведение конкретных Яндексовских звуков,
 // которые конфликтуют с нашей озвучкой.
 // Остальные звуки Яндекса (бипы, уведомления) НЕ блокируются.
 //
 // Страховка поверх declarativeNetRequest: даже если сетевой запрос
-// прошёл (правило не сработало), play() будет отменён.
+// прошёл (правило не сработало), play()/fetch() будет отменён.
 
 (function() {
   'use strict';
@@ -20,29 +20,49 @@
   ];
 
   // Паттерн озвучки цифр: /{path}/{N}.mp3 (номер ячейки)
-  const DIGIT_MP3_RE = /\/\d+\.mp3$/;
+  // Учитываем возможные query-параметры (?v=1 и т.п.)
+  const DIGIT_MP3_RE = /\/\d+\.mp3(\?.*)?$/;
 
-  /** Проверяет, нужно ли блокировать воспроизведение этого src */
-  function shouldBlock(src) {
-    if (!src || !src.includes(BLOCKED_HOST)) return false;
+  /** Проверяет, нужно ли блокировать воспроизведение этого URL */
+  function shouldBlock(url) {
+    if (!url || !url.includes(BLOCKED_HOST)) return false;
     // Проверяем конкретные хэши
     for (const hash of BLOCKED_HASHES) {
-      if (src.includes(hash)) return true;
+      if (url.includes(hash)) return true;
     }
     // Проверяем паттерн озвучки цифр (номер ячейки)
-    if (DIGIT_MP3_RE.test(src)) return true;
+    if (DIGIT_MP3_RE.test(url)) return true;
     return false;
   }
 
+  // ─── Перехват Audio.prototype.play ────────────────────────────────
   const origPlay = Audio.prototype.play;
   Audio.prototype.play = function() {
     if (shouldBlock(this.src)) {
       console.log('[Saiko] BLOCKED Yandex sound play():', this.src);
-      // Возвращаем resolved promise — Yandex код не падает
       return Promise.resolve();
     }
     return origPlay.call(this);
   };
 
-  console.log('[Saiko] MAIN world: Audio.prototype.play intercepted (specific pvz-sound hashes + digit MP3s blocked)');
+  // ─── Перехват fetch — блокируем загрузку MP3 через fetch + AudioContext ──
+  const origFetch = window.fetch;
+  window.fetch = function(input, init) {
+    const url = typeof input === 'string' ? input :
+                input instanceof Request ? input.url :
+                String(input);
+    if (shouldBlock(url)) {
+      console.log('[Saiko] BLOCKED Yandex sound fetch():', url);
+      // Возвращаем пустой Response — Yandex код не падает,
+      // но decodeAudioData получит невалидные данные и ничего не воспроизведёт
+      return Promise.resolve(new Response(null, {
+        status: 200,
+        statusText: 'OK',
+        headers: { 'Content-Type': 'audio/mpeg' },
+      }));
+    }
+    return origFetch.apply(this, arguments);
+  };
+
+  console.log('[Saiko] MAIN world: Audio.prototype.play + fetch intercepted (specific pvz-sound hashes + digit MP3s blocked)');
 })();
