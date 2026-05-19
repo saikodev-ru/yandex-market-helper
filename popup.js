@@ -15,6 +15,7 @@ const SETTINGS = [
   { id: 'toggleSuccessShipSound',  key: 'successShipSoundEnabled', def: true  },
   { id: 'toggleHotkeys',           key: 'hotkeysEnabled',          def: true  },
   { id: 'toggleRenum',             key: 'renumEnabled',             def: true  },
+  { id: 'toggleIssuingCellVoice',   key: 'issuingCellVoiceEnabled',   def: true  },
   { id: 'toggleFadeInElements',    key: 'fadeInElementsEnabled',    def: true  },
 ];
 

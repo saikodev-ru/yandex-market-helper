@@ -33,6 +33,8 @@ let oplataSoundPlayed        = false;
 let enterCodeAudio           = null;
 let lamodaSoundPlayed        = false;
 let codeAcceptedSoundPlayed  = false;
+let issuingCellVoiceEnabled  = true;
+let issuingCellSpoken        = false; // озвучена ли ячейка на текущей странице
 
 // Поллер завершения размещения (для React-страниц с отложенной загрузкой)
 let placementCompletePoller  = null;
@@ -113,6 +115,18 @@ const SoundQueue = {
       audio.onended = advance;
       audio.onerror = advance;
     }
+  },
+
+  /** Добавить приоритетный звук — ставится в начало очереди,
+   *  текущий звук доигрывает до конца, затем приоритетный.
+   *  @param {string|Function} src — URL mp3 или функция осциллятора
+   *  @param {Object} options — { volume, speed, label, duration } */
+  addPriority(src, options = {}) {
+    const { volume = 0.8, speed = 1.0, label = '', duration = 300 } = options;
+    const type = typeof src === 'function' ? 'fn' : 'mp3';
+    this.queue.unshift({ src, volume, speed, type, label, duration });
+    console.log(`🔊 Queue: +priority "${label}" (в очереди: ${this.queue.length}, играет: ${this.isPlaying})`);
+    if (!this.isPlaying) this._processNext();
   },
 
   /** Очистить очередь (текущий звук доиграет до конца) */
@@ -337,10 +351,11 @@ function initFadeInSetting() {
 function initVoiceSettings() {
   try {
     chrome.storage.sync.get(
-      ["voiceAlertsEnabled", "placementCompleteEnabled"],
-      ({ voiceAlertsEnabled: enabled, placementCompleteEnabled: placementEnabled }) => {
+      ["voiceAlertsEnabled", "placementCompleteEnabled", "issuingCellVoiceEnabled"],
+      ({ voiceAlertsEnabled: enabled, placementCompleteEnabled: placementEnabled, issuingCellVoiceEnabled: cellEnabled }) => {
         voiceAlertsEnabled       = !!enabled;
         placementCompleteEnabled = !!placementEnabled;
+        issuingCellVoiceEnabled  = cellEnabled !== false;
       }
     );
 
@@ -352,6 +367,10 @@ function initVoiceSettings() {
       if (changes.placementCompleteEnabled) {
         placementCompleteEnabled = changes.placementCompleteEnabled.newValue;
         console.log("Озвучка завершения приёмки:", placementCompleteEnabled ? "включена" : "выключена");
+      }
+      if (changes.issuingCellVoiceEnabled) {
+        issuingCellVoiceEnabled = changes.issuingCellVoiceEnabled.newValue !== false;
+        console.log("Озвучка ячейки выдачи:", issuingCellVoiceEnabled ? "включена" : "выключена");
       }
     });
   } catch (error) {
@@ -497,6 +516,93 @@ function playPlacementCompleteSound() {
   lastPlacementCompletePlay = now;
   if (!PLACEMENT_COMPLETE_AUDIO) return;
   SoundQueue.add(PLACEMENT_COMPLETE_AUDIO, { label: 'placement_complete' });
+}
+
+
+// ============================================================
+// === Озвучка ячейки выдачи ===
+// ============================================================
+// На странице issuing/client-session находит цифру ячейки из элемента
+// с data-i18n-key="features.client-issuing-session:order-card.deliver.cell.sub-title"
+// и озвучивает её через SoundQueue с приоритетом.
+// Воспроизводится ровно 1 раз за страницу, не повторяется.
+// ============================================================
+
+/** Строит последовательность MP3-файлов для озвучки числа ячейки */
+function buildCellNumberSequence(num) {
+  const MP3_PATH = 'sounds/num/';
+  const url = n => chrome.runtime.getURL(`${MP3_PATH}${n}.mp3`);
+  const out = [];
+  if (num <= 20) {
+    out.push(url(num));
+  } else if (num < 100) {
+    out.push(url(Math.floor(num / 10) * 10));
+    if (num % 10) out.push(url(num % 10));
+  } else if (num < 1000) {
+    out.push(url(Math.floor(num / 100) * 100));
+    if (num % 100) out.push(...buildCellNumberSequence(num % 100));
+  } else {
+    // 1000+ — озвучиваем по цифрам
+    const digits = String(num).split('');
+    for (const d of digits) out.push(url(parseInt(d)));
+  }
+  return out;
+}
+
+/** Найти и озвучить ячейку выдачи (только 1 раз за страницу) */
+function trySpeakIssuingCell(rootNode) {
+  if (!issuingCellVoiceEnabled) return;
+  if (issuingCellSpoken) return;
+
+  // Проверяем что мы на странице issuing/client-session
+  if (!/\/issuing\/client-session\//.test(location.pathname)) return;
+
+  // Ищем элемент "Ячейка" — span с data-i18n-key
+  const cellKey = 'features.client-issuing-session:order-card.deliver.cell.sub-title';
+  const cellLabel = rootNode.matches?.(`[data-i18n-key="${cellKey}"]`)
+    ? rootNode
+    : rootNode.querySelector?.(`[data-i18n-key="${cellKey}"]`);
+
+  if (!cellLabel) return;
+
+  // Цифра ячейки — предыдущий sibling span в том же родителе
+  // Структура: <div ...> <span style="font-weight:700">112</span> <span data-i18n-key="...">Ячейка</span> </div>
+  const cellContainer = cellLabel.parentElement;
+  if (!cellContainer) return;
+
+  // Ищем span с цифрой — предыдущий sibling перед span[data-i18n-key]
+  let numberSpan = cellLabel.previousElementSibling;
+  // Если "Ячейка" обёрнут в лишний span, поднимаемся на уровень выше
+  if (!numberSpan && cellContainer.parentElement) {
+    numberSpan = cellContainer.previousElementSibling;
+  }
+
+  if (!numberSpan) return;
+
+  const cellNumber = parseInt(numberSpan.textContent.trim(), 10);
+  if (isNaN(cellNumber) || cellNumber <= 0) return;
+
+  // Озвучиваем ровно один раз
+  issuingCellSpoken = true;
+  console.log(`[Saiko] Озвучка ячейки выдачи: ${cellNumber}`);
+
+  const sequence = buildCellNumberSequence(cellNumber);
+  // Добавляем бип + число как приоритетную цепочку
+  const chain = [
+    { src: playScanBeep, duration: 300, label: 'cell_beep' },
+  ];
+  for (let i = 0; i < sequence.length; i++) {
+    chain.push({ src: sequence[i], label: `cell_${i}`, speed: 1.1 });
+  }
+
+  // Первый элемент цепочки — приоритетный, остальные идут в обычном порядке
+  SoundQueue.addPriority(chain[0].src, {
+    duration: chain[0].duration,
+    label: chain[0].label,
+  });
+  if (chain.length > 1) {
+    SoundQueue.addChain(chain.slice(1));
+  }
 }
 
 
@@ -846,6 +952,9 @@ function checkNodeForTriggers(node) {
   };
 
   if (isIssuingPage) {
+    // --- Озвучка ячейки выдачи (приоритет, 1 раз) ---
+    trySpeakIssuingCell(node);
+
     // --- Avito (проверяем права получателя) ---
     // Используем leafElements — контейнерный node.textContent включает текст
     // всего поддерева и вызывает ложные срабатывания на заказах других служб.
@@ -912,6 +1021,9 @@ function checkNodeForTriggers(node) {
 /** Начальное сканирование DOM (для элементов, уже присутствующих на странице) */
 function initialTriggerScan() {
   if (document.title !== "Выдача клиентского заказа") return;
+
+  // Озвучка ячейки выдачи (приоритет, 1 раз)
+  if (document.body) trySpeakIssuingCell(document.body);
 
   // Avito — только листовые элементы, иначе срабатывает на контейнерах
   document.querySelectorAll('span, p, div, td, li').forEach(el => {
@@ -1571,6 +1683,7 @@ function onSPANavigate() {
   enterCodeSoundPlayed = false;
   oplataSoundPlayed    = false;
   codeAcceptedSoundPlayed = false;
+  issuingCellSpoken    = false;
 
   // Очищаем звуковую очередь при смене страницы
   SoundQueue.clear();
