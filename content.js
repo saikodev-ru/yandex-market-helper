@@ -722,10 +722,8 @@ function trySpeakIssuingCell(rootNode) {
   console.log(`[Saiko] Озвучка ячейки выдачи: ${cellNumber}`);
 
   const sequence = buildCellNumberSequence(cellNumber);
-  // Вся цепочка — приоритетная: колокольчик + число ячейки
-  const chain = [
-    { src: playCellChime, duration: 400, label: 'cell_chime' },
-  ];
+  // Приоритетная цепочка: только число ячейки
+  const chain = [];
   for (let i = 0; i < sequence.length; i++) {
     chain.push({ src: sequence[i], label: `cell_${i}` });
   }
@@ -794,37 +792,6 @@ function playScanBeep() {
       resume();
     }
   } catch (e) { console.log('Ошибка playScanBeep:', e); }
-}
-
-/** Мягкий колокольчик перед озвучкой ячейки выдачи */
-function playCellChime() {
-  try {
-    const ctx = SoundQueue._getAudioContext();
-    if (ctx.state === 'suspended') {
-      ctx.resume().then(() => {
-        _chimeTone(ctx, 0,    880, 0.25);
-        _chimeTone(ctx, 0.15, 660, 0.18);
-      }).catch(() => {});
-    } else {
-      _chimeTone(ctx, 0,    880, 0.25);
-      _chimeTone(ctx, 0.15, 660, 0.18);
-    }
-  } catch (e) { console.log('Ошибка playCellChime:', e); }
-}
-
-/** Один тон колокольчика — плавное нарастание и мягкое затухание */
-function _chimeTone(ctx, startTime, freq, gainPeak) {
-  const osc  = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.type = 'sine';  // мягкая синусоида вместо резкого square
-  osc.frequency.setValueAtTime(freq, ctx.currentTime + startTime);
-  gain.gain.setValueAtTime(0, ctx.currentTime + startTime);
-  gain.gain.linearRampToValueAtTime(gainPeak, ctx.currentTime + startTime + 0.02);
-  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + startTime + 0.35);
-  osc.start(ctx.currentTime + startTime);
-  osc.stop(ctx.currentTime  + startTime + 0.4);
 }
 
 function _scanBeepSeq(ctx) {
