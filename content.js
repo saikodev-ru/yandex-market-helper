@@ -61,64 +61,6 @@ const SoundQueue = {
   queue: [],
   isPlaying: false,
   GAP_MS: 100, // задержка между звуками в очереди (мс)
-  _audioCtx: null,
-  _bufferCache: {}, // кеш декодированных AudioBuffer по URL
-  _gestureReady: false,
-
-  /** Получить/создать общий AudioContext */
-  _getAudioContext() {
-    if (!this._audioCtx || this._audioCtx.state === 'closed') {
-      this._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    return this._audioCtx;
-  },
-
-  /** Попробовать резюмировать AudioContext (вызывается по пользовательскому жесту) */
-  _warmUp() {
-    try {
-      const ctx = this._getAudioContext();
-      if (ctx.state === 'suspended') {
-        ctx.resume().then(() => {
-          this._gestureReady = true;
-          this._flushPending();
-        }).catch(() => {});
-      } else {
-        this._gestureReady = true;
-        this._flushPending();
-      }
-    } catch (_) {}
-  },
-
-  /** Отправить ожидающие звуки в очередь после активации контекста */
-  _flushPending() {
-    if (this._pending.length === 0) return;
-    const items = this._pending;
-    this._pending = [];
-    for (const item of items) this.queue.push(item);
-    console.log(`🔊 Queue: flushed ${items.length} pending items`);
-    if (!this.isPlaying) this._processNext();
-  },
-
-  _pending: [], // звуки, ожидающие активации AudioContext
-
-  /** Инициализация: слушаем пользовательские жесты для активации AudioContext */
-  initGestureListeners() {
-    const activate = () => {
-      this._warmUp();
-    };
-    document.addEventListener('click', activate, { once: true });
-    document.addEventListener('keydown', activate, { once: true });
-  },
-
-  /** Декодировать MP3 в AudioBuffer (с кешированием) */
-  async _decodeAudio(url) {
-    if (this._bufferCache[url]) return this._bufferCache[url];
-    const response = await fetch(url);
-    const arrayBuffer = await response.arrayBuffer();
-    const audioBuffer = await this._getAudioContext().decodeAudioData(arrayBuffer);
-    this._bufferCache[url] = audioBuffer;
-    return audioBuffer;
-  },
 
   /** Добавить один звук в очередь
    *  @param {string|Function} src — URL mp3 или функция осциллятора
@@ -127,13 +69,6 @@ const SoundQueue = {
     const { volume = 0.8, speed = 1.0, label = '', duration = 300 } = options;
     const type = typeof src === 'function' ? 'fn' : 'mp3';
     const item = { src, volume, speed, type, label, duration };
-
-    // MP3 требует AudioContext — если он ещё не активирован, буферизуем
-    if (type === 'mp3' && !this._gestureReady) {
-      this._pending.push(item);
-      console.log(`🔊 Queue: ⏳ "${label}" (pending, ждём жест)`);
-      return;
-    }
 
     this.queue.push(item);
     console.log(`🔊 Queue: +"${label}" (в очереди: ${this.queue.length}, играет: ${this.isPlaying})`);
@@ -147,12 +82,7 @@ const SoundQueue = {
       const { src, volume = 0.8, speed = 1.0, label = '', duration = 300 } = item;
       const type = typeof src === 'function' ? 'fn' : 'mp3';
       const entry = { src, volume, speed, type, label, duration };
-
-      if (type === 'mp3' && !this._gestureReady) {
-        this._pending.push(entry);
-      } else {
-        this.queue.push(entry);
-      }
+      this.queue.push(entry);
     }
     console.log(`🔊 Queue: +chain[${items.length}] (в очереди: ${this.queue.length}, играет: ${this.isPlaying})`);
     if (!this.isPlaying && this.queue.length > 0) this._processNext();
@@ -173,13 +103,13 @@ const SoundQueue = {
       try { item.src(); } catch (e) { console.warn('Queue fn error:', e); }
       setTimeout(() => this._processNext(), (item.duration || 300) + this.GAP_MS);
     } else {
-      // MP3-файл — воспроизводим через AudioContext
+      // MP3-файл — воспроизводим через new Audio()
       this._playMp3(item);
     }
   },
 
-  /** Воспроизвести MP3 через AudioContext: fetch → decode → BufferSource */
-  async _playMp3(item) {
+  /** Воспроизвести MP3 через new Audio() — работает с MEI, без жеста */
+  _playMp3(item) {
     let advanced = false;
     const advance = () => {
       if (advanced) return;
@@ -188,30 +118,31 @@ const SoundQueue = {
     };
 
     try {
-      const audioBuffer = await this._decodeAudio(item.src);
-      const ctx = this._getAudioContext();
-
-      if (ctx.state === 'suspended') {
-        await ctx.resume();
+      const audio = new Audio(item.src);
+      audio.volume = item.volume ?? 0.8;
+      if (item.speed && item.speed !== 1.0) {
+        audio.playbackRate = item.speed;
       }
 
-      const source = ctx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.playbackRate.value = item.speed || 1.0;
+      audio.onended = advance;
+      audio.onerror = () => {
+        console.warn(`Queue play error (${item.label}): audio error`);
+        advance();
+      };
 
-      const gainNode = ctx.createGain();
-      gainNode.gain.value = item.volume ?? 0.8;
-      source.connect(gainNode);
-      gainNode.connect(ctx.destination);
+      const playPromise = audio.play();
+      // play() может вернуть Promise — обрабатываем NotAllowedError
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(e => {
+          console.warn(`Queue play error (${item.label}):`, e.name, e.message);
+          advance();
+        });
+      }
 
-      source.onended = advance;
-      source.start();
-
-      // Страховка: если onended не сработал
-      const duration = audioBuffer.duration / (item.speed || 1.0);
-      setTimeout(advance, (duration + 0.5) * 1000);
+      // Страховка: если onended не сработал (5 сек максимум)
+      setTimeout(advance, 5000);
     } catch (e) {
-      console.warn(`Queue AudioContext error (${item.label}):`, e);
+      console.warn(`Queue play error (${item.label}):`, e);
       advance();
     }
   },
@@ -225,7 +156,6 @@ const SoundQueue = {
     const type = typeof src === 'function' ? 'fn' : 'mp3';
     const item = { src, volume, speed, type, label, duration };
 
-    // Приоритетный звук — всегда в основную очередь (не pending)
     this.queue.unshift(item);
     console.log(`🔊 Queue: +priority "${label}" (в очереди: ${this.queue.length}, играет: ${this.isPlaying})`);
     if (!this.isPlaying) this._processNext();
@@ -248,7 +178,6 @@ const SoundQueue = {
   /** Очистить очередь (текущий звук доиграет до конца) */
   clear() {
     this.queue = [];
-    this._pending = [];
     console.log('🔊 Queue: очищена');
   },
 
@@ -1880,7 +1809,7 @@ function safeInit() {
     initEventListeners();
     initObservers();
     initHotkeys();
-    SoundQueue.initGestureListeners();  // Активация AudioContext по клику/keydown
+    // SoundQueue теперь использует new Audio() — MEI позволяет без жеста
     injectPvzSoundBlocker();  // MAIN world: блокируем Яндексовскую TTS
     handleContextInvalidation();
   } catch (e) {
