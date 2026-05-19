@@ -30,7 +30,6 @@ let lastSuccessShipPlay      = 0;
 
 let enterCodeSoundPlayed     = false;
 let oplataSoundPlayed        = false;
-let enterCodeAudio           = null;
 let lamodaSoundPlayed        = false;
 let codeAcceptedSoundPlayed  = false;
 let issuingCellVoiceEnabled  = true;
@@ -64,6 +63,7 @@ const SoundQueue = {
   GAP_MS: 100, // задержка между звуками в очереди (мс)
   _audioCtx: null,
   _bufferCache: {}, // кеш декодированных AudioBuffer по URL
+  _gestureReady: false,
 
   /** Получить/создать общий AudioContext */
   _getAudioContext() {
@@ -71,6 +71,43 @@ const SoundQueue = {
       this._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
     return this._audioCtx;
+  },
+
+  /** Попробовать резюмировать AudioContext (вызывается по пользовательскому жесту) */
+  _warmUp() {
+    try {
+      const ctx = this._getAudioContext();
+      if (ctx.state === 'suspended') {
+        ctx.resume().then(() => {
+          this._gestureReady = true;
+          this._flushPending();
+        }).catch(() => {});
+      } else {
+        this._gestureReady = true;
+        this._flushPending();
+      }
+    } catch (_) {}
+  },
+
+  /** Отправить ожидающие звуки в очередь после активации контекста */
+  _flushPending() {
+    if (this._pending.length === 0) return;
+    const items = this._pending;
+    this._pending = [];
+    for (const item of items) this.queue.push(item);
+    console.log(`🔊 Queue: flushed ${items.length} pending items`);
+    if (!this.isPlaying) this._processNext();
+  },
+
+  _pending: [], // звуки, ожидающие активации AudioContext
+
+  /** Инициализация: слушаем пользовательские жесты для активации AudioContext */
+  initGestureListeners() {
+    const activate = () => {
+      this._warmUp();
+    };
+    document.addEventListener('click', activate, { once: true });
+    document.addEventListener('keydown', activate, { once: true });
   },
 
   /** Декодировать MP3 в AudioBuffer (с кешированием) */
@@ -89,7 +126,16 @@ const SoundQueue = {
   add(src, options = {}) {
     const { volume = 0.8, speed = 1.0, label = '', duration = 300 } = options;
     const type = typeof src === 'function' ? 'fn' : 'mp3';
-    this.queue.push({ src, volume, speed, type, label, duration });
+    const item = { src, volume, speed, type, label, duration };
+
+    // MP3 требует AudioContext — если он ещё не активирован, буферизуем
+    if (type === 'mp3' && !this._gestureReady) {
+      this._pending.push(item);
+      console.log(`🔊 Queue: ⏳ "${label}" (pending, ждём жест)`);
+      return;
+    }
+
+    this.queue.push(item);
     console.log(`🔊 Queue: +"${label}" (в очереди: ${this.queue.length}, играет: ${this.isPlaying})`);
     if (!this.isPlaying) this._processNext();
   },
@@ -100,10 +146,16 @@ const SoundQueue = {
     for (const item of items) {
       const { src, volume = 0.8, speed = 1.0, label = '', duration = 300 } = item;
       const type = typeof src === 'function' ? 'fn' : 'mp3';
-      this.queue.push({ src, volume, speed, type, label, duration });
+      const entry = { src, volume, speed, type, label, duration };
+
+      if (type === 'mp3' && !this._gestureReady) {
+        this._pending.push(entry);
+      } else {
+        this.queue.push(entry);
+      }
     }
     console.log(`🔊 Queue: +chain[${items.length}] (в очереди: ${this.queue.length}, играет: ${this.isPlaying})`);
-    if (!this.isPlaying) this._processNext();
+    if (!this.isPlaying && this.queue.length > 0) this._processNext();
   },
 
   /** Внутренний метод — обработать следующий звук в очереди */
@@ -121,7 +173,7 @@ const SoundQueue = {
       try { item.src(); } catch (e) { console.warn('Queue fn error:', e); }
       setTimeout(() => this._processNext(), (item.duration || 300) + this.GAP_MS);
     } else {
-      // MP3-файл — воспроизводим через AudioContext (обходит autoplay-политику)
+      // MP3-файл — воспроизводим через AudioContext
       this._playMp3(item);
     }
   },
@@ -136,12 +188,12 @@ const SoundQueue = {
     };
 
     try {
-      // Декодируем (не требует запущенного контекста)
       const audioBuffer = await this._decodeAudio(item.src);
-
-      // Резюмируем контекст если приостановлен
       const ctx = this._getAudioContext();
-      if (ctx.state === 'suspended') await ctx.resume();
+
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
 
       const source = ctx.createBufferSource();
       source.buffer = audioBuffer;
@@ -159,19 +211,8 @@ const SoundQueue = {
       const duration = audioBuffer.duration / (item.speed || 1.0);
       setTimeout(advance, (duration + 0.5) * 1000);
     } catch (e) {
-      console.warn(`Queue AudioContext error (${item.label}):`, e, '— fallback to HTML Audio');
-      // Фолбэк на HTML Audio (если fetch/decode не сработал)
-      try {
-        const audio = new Audio(item.src);
-        audio.volume = item.volume ?? 0.8;
-        audio.playbackRate = item.speed || 1.0;
-        audio.play().catch(err => console.warn(`Queue HTML Audio error (${item.label}):`, err));
-        audio.onended = advance;
-        audio.onerror = advance;
-      } catch (fallbackErr) {
-        console.warn(`Queue complete fallback error (${item.label}):`, fallbackErr);
-        advance();
-      }
+      console.warn(`Queue AudioContext error (${item.label}):`, e);
+      advance();
     }
   },
 
@@ -182,14 +223,32 @@ const SoundQueue = {
   addPriority(src, options = {}) {
     const { volume = 0.8, speed = 1.0, label = '', duration = 300 } = options;
     const type = typeof src === 'function' ? 'fn' : 'mp3';
-    this.queue.unshift({ src, volume, speed, type, label, duration });
+    const item = { src, volume, speed, type, label, duration };
+
+    // Приоритетный звук — всегда в основную очередь (не pending)
+    this.queue.unshift(item);
     console.log(`🔊 Queue: +priority "${label}" (в очереди: ${this.queue.length}, играет: ${this.isPlaying})`);
+    if (!this.isPlaying) this._processNext();
+  },
+
+  /** Добавить приоритетную цепочку — вся цепочка ставится в начало очереди */
+  addPriorityChain(items) {
+    const entries = [];
+    for (let i = items.length - 1; i >= 0; i--) {
+      const { src, volume = 0.8, speed = 1.0, label = '', duration = 300 } = items[i];
+      const type = typeof src === 'function' ? 'fn' : 'mp3';
+      const entry = { src, volume, speed, type, label, duration };
+      entries.unshift(entry);
+      this.queue.unshift(entry);
+    }
+    console.log(`🔊 Queue: +priorityChain[${items.length}] (в очереди: ${this.queue.length}, играет: ${this.isPlaying})`);
     if (!this.isPlaying) this._processNext();
   },
 
   /** Очистить очередь (текущий звук доиграет до конца) */
   clear() {
     this.queue = [];
+    this._pending = [];
     console.log('🔊 Queue: очищена');
   },
 
@@ -467,34 +526,12 @@ function playEnterCodeSound() {
     return;
   }
 
-  // Воспроизводим через AudioContext (обходит autoplay-политику)
-  let sourceNode = null;
-  const play = async () => {
-    try {
-      const audioBuffer = await SoundQueue._decodeAudio(ENTERCODE_AUDIO);
-      const ctx = SoundQueue._getAudioContext();
-      if (ctx.state === 'suspended') await ctx.resume();
-
-      sourceNode = ctx.createBufferSource();
-      sourceNode.buffer = audioBuffer;
-      const gainNode = ctx.createGain();
-      gainNode.gain.value = 0.8;
-      sourceNode.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      sourceNode.start();
-      enterCodeAudio = sourceNode; // для совместимости с stopOnKey
-    } catch (e) {
-      console.warn("Ошибка воспроизведения entercode:", e);
-    }
-  };
-  play();
+  // Ставим в очередь — воспроизведётся когда AudioContext будет активен
+  SoundQueue.add(ENTERCODE_AUDIO, { label: 'entercode', volume: 0.8 });
 
   const stopOnKey = () => {
-    if (sourceNode) {
-      try { sourceNode.stop(); } catch (_) {}
-      sourceNode = null;
-      enterCodeAudio = null;
-    }
+    // Очищаем очередь если звук ещё не проигрался
+    SoundQueue.clear();
     document.removeEventListener('keydown', stopOnKey);
   };
   document.addEventListener('keydown', stopOnKey, { once: true });
@@ -685,22 +722,15 @@ function trySpeakIssuingCell(rootNode) {
   console.log(`[Saiko] Озвучка ячейки выдачи: ${cellNumber}`);
 
   const sequence = buildCellNumberSequence(cellNumber);
-  // Добавляем мягкий сигнал + число как приоритетную цепочку
+  // Вся цепочка — приоритетная: колокольчик + число ячейки
   const chain = [
     { src: playCellChime, duration: 400, label: 'cell_chime' },
   ];
   for (let i = 0; i < sequence.length; i++) {
-    chain.push({ src: sequence[i], label: `cell_${i}`, speed: 1.1 });
+    chain.push({ src: sequence[i], label: `cell_${i}` });
   }
 
-  // Первый элемент цепочки — приоритетный, остальные идут в обычном порядке
-  SoundQueue.addPriority(chain[0].src, {
-    duration: chain[0].duration,
-    label: chain[0].label,
-  });
-  if (chain.length > 1) {
-    SoundQueue.addChain(chain.slice(1));
-  }
+  SoundQueue.addPriorityChain(chain);
 }
 
 
@@ -769,10 +799,16 @@ function playScanBeep() {
 /** Мягкий колокольчик перед озвучкой ячейки выдачи */
 function playCellChime() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    // Два мягких тона — как тихий колокольчик
-    _chimeTone(ctx, 0,    880, 0.25);
-    _chimeTone(ctx, 0.15, 660, 0.18);
+    const ctx = SoundQueue._getAudioContext();
+    if (ctx.state === 'suspended') {
+      ctx.resume().then(() => {
+        _chimeTone(ctx, 0,    880, 0.25);
+        _chimeTone(ctx, 0.15, 660, 0.18);
+      }).catch(() => {});
+    } else {
+      _chimeTone(ctx, 0,    880, 0.25);
+      _chimeTone(ctx, 0.15, 660, 0.18);
+    }
   } catch (e) { console.log('Ошибка playCellChime:', e); }
 }
 
@@ -1877,6 +1913,7 @@ function safeInit() {
     initEventListeners();
     initObservers();
     initHotkeys();
+    SoundQueue.initGestureListeners();  // Активация AudioContext по клику/keydown
     injectPvzSoundBlocker();  // MAIN world: блокируем Яндексовскую TTS
     handleContextInvalidation();
   } catch (e) {
