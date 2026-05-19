@@ -1,15 +1,12 @@
 // issuing-sound-main.js
-// MAIN world скрипт — перехватывает Audio.prototype.play, fetch и XMLHttpRequest
-// и блокирует воспроизведение конкретных Яндексовских звуков,
+// MAIN world скрипт — перехватывает Audio.prototype.play, fetch, XMLHttpRequest
+// и свойство HTMLMediaElement.prototype.src
+// Блокирует воспроизведение конкретных Яндексовских звуков,
 // которые конфликтуют с нашей озвучкой.
-// Остальные звуки Яндекса (бипы, уведомления) НЕ блокируются.
-//
-// Страховка поверх declarativeNetRequest: даже если сетевой запрос
-// прошёл (правило не сработало), play()/fetch()/XHR будет отменён.
 //
 // E2F9405756F98ED1339B540D1F604B6C — «Оплата при получении»:
-// вместо полной блокировки отправляем событие в content script,
-// чтобы post_payment.mp3 проигралось через SoundQueue.
+// перехватываем установку src, чтобы уведомить content script
+// ДО того как DNR заблокирует сетевой запрос и Audio не загрузится.
 
 (function() {
   'use strict';
@@ -22,7 +19,8 @@
     '6AB52C2C3FB0D74D168FF69D498245CE',
   ];
 
-  // Хэш «Оплата при получении» — блокируем play(), но уведомляем content script
+  // Хэш «Оплата при получении» — блокируем воспроизведение,
+  // уведомляем content script чтобы проиграл свой вариант через SoundQueue
   const POST_PAYMENT_HASH = 'E2F9405756F98ED1339B540D1F604B6C';
 
   // Паттерн озвучки цифр: /{path}/{N}.mp3 (номер ячейки)
@@ -43,12 +41,35 @@
     return url && url.includes(BLOCKED_HOST) && url.includes(POST_PAYMENT_HASH);
   }
 
+  // ─── Перехват HTMLMediaElement.prototype.src ───────────────────────
+  // DNR block убивает сетевой запрос → Audio не загружается →
+  // canplay не наступает → play() не вызывается → наш перехват play()
+  // не срабатывает. Поэтому перехватываем установку src —
+  // это происходит ДО сетевого запроса.
+  const srcDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
+  if (srcDescriptor) {
+    Object.defineProperty(HTMLMediaElement.prototype, 'src', {
+      set(value) {
+        if (isPostPayment(value)) {
+          console.log('[Saiko] BLOCKED Yandex post-payment src, routing to SoundQueue:', value);
+          document.dispatchEvent(new CustomEvent('saiko-post-payment'));
+          // Не устанавливаем src — Audio не будет пытаться загрузить
+          return;
+        }
+        srcDescriptor.set.call(this, value);
+      },
+      get() {
+        return srcDescriptor.get.call(this);
+      },
+      configurable: true,
+    });
+  }
+
   // ─── Перехват Audio.prototype.play ────────────────────────────────
   const origPlay = Audio.prototype.play;
   Audio.prototype.play = function() {
-    // «Оплата при получении» — блокируем, но уведомляем content script
     if (isPostPayment(this.src)) {
-      console.log('[Saiko] BLOCKED Yandex post-payment, routing to SoundQueue:', this.src);
+      console.log('[Saiko] BLOCKED Yandex post-payment play(), routing to SoundQueue:', this.src);
       document.dispatchEvent(new CustomEvent('saiko-post-payment'));
       return Promise.resolve();
     }
@@ -66,7 +87,7 @@
                 input instanceof Request ? input.url :
                 String(input);
     if (isPostPayment(url)) {
-      console.log('[Saiko] BLOCKED Yandex post-payment fetch, routing to SoundQueue:', url);
+      console.log('[Saiko] BLOCKED Yandex post-payment fetch(), routing to SoundQueue:', url);
       document.dispatchEvent(new CustomEvent('saiko-post-payment'));
       return Promise.resolve(new Response(null, {
         status: 200,
@@ -121,5 +142,5 @@
     return origXHRSend.apply(this, arguments);
   };
 
-  console.log('[Saiko] MAIN world: Audio.prototype.play + fetch + XHR intercepted');
+  console.log('[Saiko] MAIN world: src setter + play + fetch + XHR intercepted');
 })();

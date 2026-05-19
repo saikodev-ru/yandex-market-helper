@@ -35,7 +35,7 @@ let postPaymentPlayed        = false; // «Оплата при получени�
 let lamodaSoundPlayed        = false;
 let codeAcceptedSoundPlayed  = false;
 let issuingCellVoiceEnabled  = true;
-let issuingCellSpoken        = false; // озвучена ли ячейка на текущей странице
+let _lastCellSpoken          = { number: 0, time: 0 }; // анти-дупликация: номер + время последней озвучки
 
 // Поллер завершения размещения (для React-страниц с отложенной загрузкой)
 let placementCompletePoller  = null;
@@ -627,7 +627,6 @@ function buildCellNumberSequence(num) {
 /** Найти и озвучить ячейку выдачи (только 1 раз за страницу) */
 function trySpeakIssuingCell(rootNode) {
   if (!issuingCellVoiceEnabled) return;
-  if (issuingCellSpoken) return;
 
   // Проверяем что мы на странице issuing/client-session
   if (!/\/issuing\/client-session\//.test(location.pathname)) return;
@@ -657,8 +656,11 @@ function trySpeakIssuingCell(rootNode) {
   const cellNumber = parseInt(numberSpan.textContent.trim(), 10);
   if (isNaN(cellNumber) || cellNumber <= 0) return;
 
-  // Озвучиваем ровно один раз
-  issuingCellSpoken = true;
+  // Анти-дупликация: не озвучивать тот же номер ячейки в течение 5 секунд
+  const now = Date.now();
+  if (_lastCellSpoken.number === cellNumber && now - _lastCellSpoken.time < 5000) return;
+  _lastCellSpoken = { number: cellNumber, time: now };
+
   console.log(`[Saiko] Озвучка ячейки выдачи: ${cellNumber}`);
 
   const sequence = buildCellNumberSequence(cellNumber);
@@ -1750,7 +1752,7 @@ function onSPANavigate() {
   oplataSoundPlayed    = false;
   postPaymentPlayed    = false;
   codeAcceptedSoundPlayed = false;
-  issuingCellSpoken    = false;
+  // _lastCellSpoken НЕ сбрасываем — анти-дупликация по номеру ячейки + 5сек окно
 
   // Очищаем звуковую очередь при смене страницы
   SoundQueue.clear();
