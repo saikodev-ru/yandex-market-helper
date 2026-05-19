@@ -1753,11 +1753,23 @@ function onSPANavigate() {
   }
 }
 
+// React Router часто делает pushState + replaceState подряд —
+// интервал ловит оба изменения и дважды вызывает onSPANavigate.
+// Дедупликация: если onSPANavigate уже вызван для этого URL — игнорируем.
+let _lastNavURL = '';
+
 setInterval(() => {
   if (location.href !== currentURL) {
     currentURL = location.href;
     // Небольшая задержка, чтобы React успел обновить document.title
-    setTimeout(onSPANavigate, 200);
+    // и все pushState/replaceState отработали
+    setTimeout(() => {
+      // Дедупликация: не вызываем если URL не изменился с прошлого onSPANavigate
+      if (location.href !== _lastNavURL) {
+        _lastNavURL = location.href;
+        onSPANavigate();
+      }
+    }, 300);
   }
 }, 500);
 
