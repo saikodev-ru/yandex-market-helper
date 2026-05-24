@@ -11,6 +11,12 @@ const SUCCESS_SHIP_AUDIO      = chrome.runtime?.getURL('sounds/success-ship.mp3'
 const CAMERA_AUDIO            = chrome.runtime?.getURL('sounds/camera.mp3');
 const POST_PAYMENT_AUDIO      = chrome.runtime?.getURL('sounds/post_payment.mp3');
 
+// === Профиль озвучки ===
+// 'default' — sounds/num/N.mp3
+// 'alice'   — sounds/alice/N.mp3 (если файл есть), иначе fallback на default
+// 'mita'    — sounds/mita/N.mp3 (если файл есть), иначе fallback на default
+let voiceProfile = 'default';
+
 // === Глобальные переменные ===
 let voiceAlertsEnabled       = true;
 let placementCompleteEnabled = true;
@@ -119,33 +125,42 @@ const SoundQueue = {
       setTimeout(() => this._processNext(), this.GAP_MS);
     };
 
-    try {
-      const audio = new Audio(item.src);
-      audio.volume = item.volume ?? 0.8;
-      if (item.speed && item.speed !== 1.0) {
-        audio.playbackRate = item.speed;
-      }
+    const tryPlay = (src, fallbackSrc) => {
+      try {
+        const audio = new Audio(src);
+        audio.volume = item.volume ?? 0.8;
+        if (item.speed && item.speed !== 1.0) {
+          audio.playbackRate = item.speed;
+        }
 
-      audio.onended = advance;
-      audio.onerror = () => {
-        console.warn(`Queue play error (${item.label}): audio error`);
+        audio.onended = advance;
+        audio.onerror = () => {
+          if (fallbackSrc) {
+            console.warn(`Queue: профильный звук не найден (${item.label}), fallback → ${fallbackSrc}`);
+            tryPlay(fallbackSrc, null);
+          } else {
+            console.warn(`Queue play error (${item.label}): audio error`);
+            advance();
+          }
+        };
+
+        const playPromise = audio.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+          playPromise.catch(e => {
+            console.warn(`Queue play error (${item.label}):`, e.name, e.message);
+            advance();
+          });
+        }
+
+        // Страховка: если onended не сработал — двигаемся дальше через 8 сек
+        setTimeout(advance, 8000);
+      } catch (e) {
+        console.warn(`Queue play error (${item.label}):`, e);
         advance();
-      };
-
-      const playPromise = audio.play();
-      if (playPromise && typeof playPromise.catch === 'function') {
-        playPromise.catch(e => {
-          console.warn(`Queue play error (${item.label}):`, e.name, e.message);
-          advance();
-        });
       }
+    };
 
-      // Страховка: если onended не сработал (5 сек максимум)
-      setTimeout(advance, 5000);
-    } catch (e) {
-      console.warn(`Queue play error (${item.label}):`, e);
-      advance();
-    }
+    tryPlay(item.src, item.fallback ?? null);
   },
 
   /** Добавить приоритетный звук — ставится в начало очереди,
@@ -398,11 +413,12 @@ function initFadeInSetting() {
 function initVoiceSettings() {
   try {
     chrome.storage.sync.get(
-      ["voiceAlertsEnabled", "placementCompleteEnabled", "issuingCellVoiceEnabled"],
-      ({ voiceAlertsEnabled: enabled, placementCompleteEnabled: placementEnabled, issuingCellVoiceEnabled: cellEnabled }) => {
+      ["voiceAlertsEnabled", "placementCompleteEnabled", "issuingCellVoiceEnabled", "voiceProfile"],
+      ({ voiceAlertsEnabled: enabled, placementCompleteEnabled: placementEnabled, issuingCellVoiceEnabled: cellEnabled, voiceProfile: profile }) => {
         voiceAlertsEnabled       = !!enabled;
         placementCompleteEnabled = !!placementEnabled;
         issuingCellVoiceEnabled  = cellEnabled !== false;
+        voiceProfile             = profile || 'default';
       }
     );
 
@@ -418,6 +434,10 @@ function initVoiceSettings() {
       if (changes.issuingCellVoiceEnabled) {
         issuingCellVoiceEnabled = changes.issuingCellVoiceEnabled.newValue !== false;
         console.log("Озвучка ячейки выдачи:", issuingCellVoiceEnabled ? "включена" : "выключена");
+      }
+      if (changes.voiceProfile) {
+        voiceProfile = changes.voiceProfile.newValue || 'default';
+        console.log("Профиль озвучки:", voiceProfile);
       }
     });
   } catch (error) {
@@ -584,10 +604,27 @@ function playPlacementCompleteSound() {
 
 /** Строит последовательность MP3-файлов для озвучки числа ячейки.
  *  Если есть готовый файл (N.mp3) — использует его напрямую.
- *  Иначе — разбирает на имеющиеся компоненты (сотни + десятки + единицы). */
+ *  Иначе — разбирает на имеющиеся компоненты (сотни + десятки + единицы).
+ *  Поддерживает профиль озвучки: sounds/{profile}/N.mp3 → fallback на sounds/num/N.mp3 */
 function buildCellNumberSequence(num) {
-  const MP3_PATH = 'sounds/num/';
-  const url = n => chrome.runtime.getURL(`${MP3_PATH}${n}.mp3`);
+  const DEFAULT_PATH = 'sounds/num/';
+  const profilePath  = (voiceProfile && voiceProfile !== 'default')
+    ? `sounds/${voiceProfile}/`
+    : null;
+
+  // Возвращает URL с учётом профиля: сначала пробуем profile/, потом num/
+  const url = n => {
+    if (profilePath) {
+      // Мы не можем синхронно проверить существование файла в extension,
+      // поэтому всегда строим URL профиля — если файл не найден,
+      // onerror в SoundQueue._playMp3 => advance(), звук пропускается.
+      // Для надёжности: возвращаем [profileUrl, defaultUrl] — SoundQueue
+      // попробует профильный файл, при onerror — default (через fallback-цепочку).
+      return chrome.runtime.getURL(`${profilePath}${n}.mp3`);
+    }
+    return chrome.runtime.getURL(`${DEFAULT_PATH}${n}.mp3`);
+  };
+  const urlDefault = n => chrome.runtime.getURL(`${DEFAULT_PATH}${n}.mp3`);
 
   // Доступные числа: 1–144, 200, 300, 400
   const AVAILABLE = new Set();
@@ -597,7 +634,14 @@ function buildCellNumberSequence(num) {
   AVAILABLE.add(400);
 
   // Прямой файл есть — используем сразу
-  if (AVAILABLE.has(num)) return [url(num)];
+  if (AVAILABLE.has(num)) {
+    if (profilePath) {
+      // Для профиля возвращаем пару: [profileUrl, defaultFallbackUrl]
+      // SoundQueue сыграет первый доступный (через tryUrls)
+      return [{ src: url(num), fallback: urlDefault(num) }];
+    }
+    return [url(num)];
+  }
 
   // Иначе — разбираем на компоненты
   const out = [];
@@ -606,10 +650,10 @@ function buildCellNumberSequence(num) {
 
   if (hundreds > 0) {
     if (AVAILABLE.has(hundreds)) {
-      out.push(url(hundreds));
+      out.push(...buildCellNumberSequence(hundreds));
     } else {
       // Сотни выше 400 — по цифрам
-      for (const d of String(Math.floor(num / 100))) out.push(url(parseInt(d)));
+      for (const d of String(Math.floor(num / 100))) out.push(...buildCellNumberSequence(parseInt(d)));
     }
   }
 
@@ -619,7 +663,7 @@ function buildCellNumberSequence(num) {
 
   // Если ничего не собрали (число = 0 или ошибочное) — по цифрам
   if (out.length === 0 && num > 0) {
-    for (const d of String(num).split('')) out.push(url(parseInt(d)));
+    for (const d of String(num).split('')) out.push(...buildCellNumberSequence(parseInt(d)));
   }
 
   return out;
@@ -668,7 +712,13 @@ function trySpeakIssuingCell(rootNode) {
   // Приоритетная цепочка: только число ячейки
   const chain = [];
   for (let i = 0; i < sequence.length; i++) {
-    chain.push({ src: sequence[i], label: `cell_${i}` });
+    const item = sequence[i];
+    if (typeof item === 'object' && item.src) {
+      // Профильный звук с fallback
+      chain.push({ src: item.src, fallback: item.fallback, label: `cell_${i}` });
+    } else {
+      chain.push({ src: item, label: `cell_${i}` });
+    }
   }
 
   SoundQueue.addPriorityChain(chain);

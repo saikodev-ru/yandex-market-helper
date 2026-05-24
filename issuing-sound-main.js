@@ -23,16 +23,12 @@
   // уведомляем content script чтобы проиграл свой вариант через SoundQueue
   const POST_PAYMENT_HASH = 'E2F9405756F98ED1339B540D1F604B6C';
 
-  // Паттерн озвучки цифр: /{path}/{N}.mp3 (номер ячейки)
-  const DIGIT_MP3_RE = /\/\d+\.mp3(\?.*)?$/;
-
   /** Проверяет, нужно ли блокировать воспроизведение этого URL */
   function shouldBlock(url) {
     if (!url || !url.includes(BLOCKED_HOST)) return false;
     for (const hash of BLOCKED_HASHES) {
       if (url.includes(hash)) return true;
     }
-    if (DIGIT_MP3_RE.test(url)) return true;
     return false;
   }
 

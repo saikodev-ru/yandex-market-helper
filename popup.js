@@ -88,4 +88,28 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
   }
+
+  // === Профиль голоса для озвучки ячеек ===
+  const voiceProfileSelect = document.getElementById('voiceProfileSelect');
+  if (voiceProfileSelect) {
+    // Загружаем сохранённый профиль
+    chrome.storage.sync.get({ voiceProfile: 'default' }, ({ voiceProfile }) => {
+      voiceProfileSelect.value = voiceProfile || 'default';
+    });
+
+    voiceProfileSelect.addEventListener('change', () => {
+      chrome.storage.sync.set({ voiceProfile: voiceProfileSelect.value });
+    });
+
+    // Показываем/скрываем строку выбора голоса в зависимости от чекбокса
+    const cellVoiceToggle = document.getElementById('toggleIssuingCellVoice');
+    const profileRow = document.getElementById('voiceProfileRow');
+    if (cellVoiceToggle && profileRow) {
+      const updateProfileRowVisibility = () => {
+        profileRow.style.display = cellVoiceToggle.checked ? '' : 'none';
+      };
+      updateProfileRowVisibility();
+      cellVoiceToggle.addEventListener('change', updateProfileRowVisibility);
+    }
+  }
 });
