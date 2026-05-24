@@ -1,6 +1,92 @@
+// ============================================================
+// === Offscreen Document Management ===
+// ============================================================
+// Offscreen-документ с reason: 'AUDIO' позволяет воспроизводить
+// MP3-звуки БЕЗ пользовательского gesture. После перезагрузки
+// страницы браузер блокирует audio.play() до первого клика —
+// offscreen document решает эту проблему.
+
+let offscreenCreated = false;
+const pendingAudioRequests = new Map(); // requestId → tabId
+
+/** Создать offscreen document (если ещё не создан) */
+async function ensureOffscreenDocument() {
+  if (offscreenCreated) return;
+  try {
+    await chrome.offscreen.createDocument({
+      url: 'offscreen.html',
+      reasons: ['AUDIO'],
+      justification: 'Воспроизведение звуковых уведомлений расширения без требования user gesture на странице'
+    });
+    offscreenCreated = true;
+    console.log('🔊 Background: offscreen document created');
+  } catch (e) {
+    if (e.message?.includes('Only a single offscreen')) {
+      offscreenCreated = true;
+      return; // уже создан
+    }
+    console.error('🔊 Background: ошибка создания offscreen:', e);
+  }
+}
+
+// При старте service worker — создаём offscreen документ
+ensureOffscreenDocument();
+
+// Когда offscreen документ закрывается (например, при сне service worker) —
+// сбрасываем флаг, чтобы пересоздать при следующем запросе
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // Если получили сообщение от offscreen — значит он жив
+  if (sender.documentId) {
+    offscreenCreated = true;
+  }
+});
 
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // === Маршрутизация аудио через offscreen ===
+  if (request.action === 'mh-play-audio') {
+    const tabId = sender.tab?.id;
+    const requestId = request.requestId;
+    if (tabId && requestId) {
+      pendingAudioRequests.set(requestId, tabId);
+      // Автоочистка через 15 сек (на случай если done не придёт)
+      setTimeout(() => pendingAudioRequests.delete(requestId), 15000);
+    }
+    ensureOffscreenDocument().then(() => {
+      chrome.runtime.sendMessage({
+        action: 'mh-offscreen-play',
+        src: request.src,
+        volume: request.volume,
+        speed: request.speed,
+        fallbackSrc: request.fallbackSrc,
+        requestId
+      }).catch(e => {
+        console.warn('🔊 Background: send to offscreen failed:', e);
+        if (tabId) {
+          chrome.tabs.sendMessage(tabId, {
+            action: 'mh-audio-done',
+            requestId
+          }).catch(() => {});
+        }
+        pendingAudioRequests.delete(requestId);
+      });
+    });
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (request.action === 'mh-audio-done') {
+    const tabId = pendingAudioRequests.get(request.requestId);
+    if (tabId) {
+      pendingAudioRequests.delete(request.requestId);
+      chrome.tabs.sendMessage(tabId, {
+        action: 'mh-audio-done',
+        requestId: request.requestId
+      }).catch(() => {});
+    }
+    return false;
+  }
+
   if (request.action === "switchTab") {
     chrome.tabs.query({}, (tabs) => {
       const targetTab = tabs.find(tab => tab.title.includes(request.keyword));
