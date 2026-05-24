@@ -173,10 +173,21 @@ const PVZ_BLOCK_RULES = [
       urlFilter: '||pvz-sound.s3.yandex.net/*/E2F9405756F98ED1339B540D1F604B6C.mp3',
     },
   },
+  // 105: «Ошибка оплаты» — BLOCK
+  // MAIN world перехватывает и отправляет событие saiko-payment-error,
+  // чтобы payment_error.mp3 играло в SoundQueue
+  {
+    id: 105,
+    priority: 1,
+    action: { type: 'block' },
+    condition: {
+      urlFilter: '||pvz-sound.s3.yandex.net/*/1E8BF03A67E1AB13C8093DE56329D337.mp3',
+    },
+  },
 ];
 
 // Включаем старые ID для очистки при обновлении
-const PVZ_RULE_IDS = [101, 102, 103, 104];
+const PVZ_RULE_IDS = [101, 102, 103, 104, 105];
 
 /** Блокируем Яндексовскую TTS когда ЛЮБАЯ из наших озвучек активна */
 async function applyPvzRules(renumEnabled, issuingCellVoiceEnabled) {

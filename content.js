@@ -38,7 +38,8 @@ let lastSuccessShipPlay      = 0;
 
 let enterCodeSoundPlayed     = false;
 let oplataSoundPlayed        = false;
-let postPaymentPlayed        = false; // «Оплата при получении» — 1 раз за страницу
+let postPaymentPlayed        = false; // «Оплата при получении» — 1 раз за сессию выдачи
+let paymentErrorPlayed       = false; // «Ошибка оплаты» — 1 раз за сессию выдачи
 let lamodaSoundPlayed        = false;
 let codeAcceptedSoundPlayed  = false;
 let issuingCellVoiceEnabled  = true;
@@ -560,14 +561,27 @@ function playOplataSound() {
 }
 
 /** Звук «Оплата при получении» — вызывается из MAIN world через событие
- *  ИЛИ через DOM-триггер (обнаружение «Терминал / наличные» / «Привязанной картой») */
+ *  ИЛИ через DOM-триггер (обнаружение «Терминал / наличные» / «Привязанной картой»).
+ *  Привязан к конкретному заказу (sessionId из URL), чтобы не повторялся
+ *  при динамических обновлениях страницы выдачи без перехода. */
 function playPostPaymentSound() {
   if (!voiceAlertsEnabled) return;
   if (postPaymentPlayed) return;
   postPaymentPlayed = true;
   const { src, fallback } = getOrderTypeAudio('post_payment');
   SoundQueue.add(src, { label: 'post_payment', fallback });
-  setTimeout(() => { postPaymentPlayed = false; }, 10000);
+  // Не сбрасываем постфлаг по таймауту — он привязан к конкретной сессии выдачи.
+  // Сброс происходит только при настоящей навигации (SPA или F5).
+}
+
+/** Звук «Ошибка оплаты» — вызывается из MAIN world через событие
+ *  когда Яндекс пытается проиграть звук ошибки оплаты. */
+function playPaymentErrorSound() {
+  if (!voiceAlertsEnabled) return;
+  if (paymentErrorPlayed) return;
+  paymentErrorPlayed = true;
+  const { src, fallback } = getOrderTypeAudio('payment_error');
+  SoundQueue.add(src, { label: 'payment_error', fallback });
 }
 
 function playSuccessBeep() {
@@ -1825,6 +1839,7 @@ function onSPANavigate() {
   enterCodeSoundPlayed = false;
   oplataSoundPlayed    = false;
   postPaymentPlayed    = false;
+  paymentErrorPlayed   = false;
   codeAcceptedSoundPlayed = false;
   // _lastCellSpoken НЕ сбрасываем — анти-дупликация по номеру ячейки + 5сек окно
 
@@ -1924,8 +1939,14 @@ function safeInit() {
     // Буфер: если событие уже было до нашего лисенера (race condition при быстрой загрузке)
     if (window.__saikoPostPaymentPending) {
       window.__saikoPostPaymentPending = false;
-      // Воспроизведём при разблокировке AudioContext (после gesture)
-      SoundQueue.add(POST_PAYMENT_AUDIO, { label: 'post_payment (buffered)' });
+      playPostPaymentSound();
+    }
+    // «Ошибка оплаты» — MAIN world уведомляет когда Яндекс пытается
+    // проиграть звук ошибки оплаты (1E8BF03A67E1AB13C8093DE56329D337).
+    document.addEventListener('saiko-payment-error', playPaymentErrorSound);
+    if (window.__saikoPaymentErrorPending) {
+      window.__saikoPaymentErrorPending = false;
+      playPaymentErrorSound();
     }
     injectPvzSoundBlocker();  // MAIN world: блокируем Яндексовскую TTS
     handleContextInvalidation();

@@ -6,10 +6,6 @@
 
     const CONFIG = {
         DEBOUNCE_DELAY: 300,
-        MP3_PATH: 'sounds/alice/num/',
-        SUCCESS_SOUND: 'sounds/alice/ordertype/success-ship.mp3',
-        DROP_SOUND: 'sounds/alice/num/drop.mp3',
-        RETURN_SOUND: 'sounds/alice/num/return.mp3',
         NUMBER_SPEED: 1.1,
         SUCCESS_SPEED: 1.1,
         VOLUME: 1.0,
@@ -28,6 +24,40 @@
         DROP_BUTTONS_GAP: 16,
         DROP_BUTTON_BORDER_RADIUS: 10
     };
+
+    // Динамические пути на основе voiceProfile
+    let voiceProfile = 'default';
+
+    function getMp3Path() {
+        const profile = (voiceProfile && voiceProfile !== 'default') ? voiceProfile : 'alice';
+        return `sounds/${profile}/num/`;
+    }
+    function getSuccessSoundPath() {
+        const profile = (voiceProfile && voiceProfile !== 'default') ? voiceProfile : 'alice';
+        return `sounds/${profile}/ordertype/success-ship.mp3`;
+    }
+    function getDropSoundPath() {
+        const profile = (voiceProfile && voiceProfile !== 'default') ? voiceProfile : 'alice';
+        return `sounds/${profile}/num/drop.mp3`;
+    }
+    function getReturnSoundPath() {
+        const profile = (voiceProfile && voiceProfile !== 'default') ? voiceProfile : 'alice';
+        return `sounds/${profile}/num/return.mp3`;
+    }
+
+    // Читаем voiceProfile из chrome.storage.sync
+    function initVoiceProfile() {
+        try {
+            chrome.storage.sync.get(['voiceProfile'], ({ voiceProfile: profile }) => {
+                voiceProfile = profile || 'default';
+            });
+            chrome.storage.onChanged.addListener((changes) => {
+                if (changes.voiceProfile) {
+                    voiceProfile = changes.voiceProfile.newValue || 'default';
+                }
+            });
+        } catch (e) {}
+    }
 
     // =========================
     // AUDIO SYSTEM
@@ -61,7 +91,7 @@
         if (number == null || typeof number !== 'number') return;
         stopAllOtherAudio();
         
-        const fullNumberUrl = chrome.runtime.getURL(`${CONFIG.MP3_PATH}${number}.mp3`);
+        const fullNumberUrl = chrome.runtime.getURL(`${getMp3Path()}${number}.mp3`);
         const hasFullFile = await checkFileExists(fullNumberUrl);
 
         if (hasFullFile) {
@@ -75,16 +105,16 @@
         const getSequence = (num) => {
             const seq = [];
             if (num <= 20) {
-                seq.push(chrome.runtime.getURL(`${CONFIG.MP3_PATH}${num}.mp3`));
+                seq.push(chrome.runtime.getURL(`${getMp3Path()}${num}.mp3`));
             } else if (num < 100) {
                 const tens = Math.floor(num / 10) * 10;
                 const ones = num % 10;
-                seq.push(chrome.runtime.getURL(`${CONFIG.MP3_PATH}${tens}.mp3`));
-                if (ones > 0) seq.push(chrome.runtime.getURL(`${CONFIG.MP3_PATH}${ones}.mp3`));
+                seq.push(chrome.runtime.getURL(`${getMp3Path()}${tens}.mp3`));
+                if (ones > 0) seq.push(chrome.runtime.getURL(`${getMp3Path()}${ones}.mp3`));
             } else if (num < 1000) {
                 const hundreds = Math.floor(num / 100) * 100;
                 const remainder = num % 100;
-                seq.push(chrome.runtime.getURL(`${CONFIG.MP3_PATH}${hundreds}.mp3`));
+                seq.push(chrome.runtime.getURL(`${getMp3Path()}${hundreds}.mp3`));
                 if (remainder > 0) seq.push(...getSequence(remainder));
             }
             return seq;
@@ -104,20 +134,20 @@
     }
 
     function playSuccess() {
-        const audio = new Audio(chrome.runtime.getURL(CONFIG.SUCCESS_SOUND));
+        const audio = new Audio(chrome.runtime.getURL(getSuccessSoundPath()));
         audio.volume = CONFIG.VOLUME;
         audio.playbackRate = CONFIG.SUCCESS_SPEED;
         audio.play().catch(() => {});
     }
 
     function playDrop() {
-        const audio = new Audio(chrome.runtime.getURL(CONFIG.DROP_SOUND));
+        const audio = new Audio(chrome.runtime.getURL(getDropSoundPath()));
         audio.volume = CONFIG.VOLUME;
         audio.play().catch(() => {});
     }
 
     function playReturn() {
-        const audio = new Audio(chrome.runtime.getURL(CONFIG.RETURN_SOUND));
+        const audio = new Audio(chrome.runtime.getURL(getReturnSoundPath()));
         audio.volume = CONFIG.VOLUME;
         audio.play().catch(() => {});
     }
@@ -210,11 +240,11 @@
         // Ищем родительский контейнер, где нужно разместить кнопки
         const parentContainer = dropPanel.closest('.mez-flex.mez-flex-row.mez-gap-\\[24px\\]');
         if (!parentContainer) return;
-		
-		    // Проверяем, не добавлены ли уже кнопки в этот контейнер
-		if (parentContainer.querySelector('.renum-drop-buttons-container')) {
-			return; // Кнопки уже есть, выходим
-		}
+                
+                    // Проверяем, не добавлены ли уже кнопки в этот контейнер
+                if (parentContainer.querySelector('.renum-drop-buttons-container')) {
+                        return; // Кнопки уже есть, выходим
+                }
         
         // Получаем номер груза из верхнего блока
         const cargoNumberElement = parentContainer.querySelector('span.mez-font-ys-display.mez-text-m-headline3');
@@ -223,146 +253,146 @@
         // Получаем высоту DROP панели для подравнивания кнопок
         const dropPanelHeight = dropPanel.offsetHeight || 68; // fallback height
 
-		try {
-			// Создаем контейнер для вертикальных кнопок
-			const buttonsContainer = document.createElement('div');
-			buttonsContainer.className = 'renum-drop-buttons-container';
-			buttonsContainer.style.cssText = `
-				display: flex;
-				flex-direction: column;
-				gap: ${CONFIG.DROP_BUTTONS_GAP}px;
-				margin-left: 12px;
-				margin-right: 4px;
-				align-self: center;
-				height: ${dropPanelHeight}px;
-				justify-content: center;
-			`;
+                try {
+                        // Создаем контейнер для вертикальных кнопок
+                        const buttonsContainer = document.createElement('div');
+                        buttonsContainer.className = 'renum-drop-buttons-container';
+                        buttonsContainer.style.cssText = `
+                                display: flex;
+                                flex-direction: column;
+                                gap: ${CONFIG.DROP_BUTTONS_GAP}px;
+                                margin-left: 12px;
+                                margin-right: 4px;
+                                align-self: center;
+                                height: ${dropPanelHeight}px;
+                                justify-content: center;
+                        `;
 
-			// Добавляем CSS-правила для hover (это решит проблему навсегда)
-			const styleId = 'renum-drop-button-hover-styles';
-			if (!document.getElementById(styleId)) {
-				const style = document.createElement('style');
-				style.id = styleId;
-				style.textContent = `
-					.renum-drop-button {
-						transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
-						will-change: transform, box-shadow;
-					}
-					.renum-drop-button:hover {
-						transform: translateY(-2px) !important;
-						box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
-					}
-				`;
-				document.head.appendChild(style);
-			}
+                        // Добавляем CSS-правила для hover (это решит проблему навсегда)
+                        const styleId = 'renum-drop-button-hover-styles';
+                        if (!document.getElementById(styleId)) {
+                                const style = document.createElement('style');
+                                style.id = styleId;
+                                style.textContent = `
+                                        .renum-drop-button {
+                                                transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+                                                will-change: transform, box-shadow;
+                                        }
+                                        .renum-drop-button:hover {
+                                                transform: translateY(-2px) !important;
+                                                box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+                                        }
+                                `;
+                                document.head.appendChild(style);
+                        }
 
-			// Создаем 3 кнопки
-			const buttons = [
-				{
-					text: '100 ячейка',
-					title: 'Печать 100',
-					bgColor: '#dcdcdc',
-					hoverColor: '#a62383',
-					action: generatePDFWithDataMatrix
-				},
-				{
-					text: 'Печатать брак',
-					title: 'Печать БРАК СОРТ НА ПВЗ',
-					bgColor: '#dcdcdc',
-					hoverColor: '#a69723',
-					action: function() {
-						console.log('🖨️ Запуск печати этикетки брака');
-						if (typeof window.printDefectLabel === 'function') {
-							window.printDefectLabel('БРАК НА ПВЗ СОРТ');
-						} else {
-							console.error('❌ Функция printDefectLabel не найдена!');
-							alert('Ошибка: модуль печати этикетки брака не загружен');
-						}
-					}
-				},
-				{
-					text: 'Печатать этикетку',
-					title: `Печать номера груза: ${cargoNumber}`,
-					bgColor: '#dcdcdc',
-					hoverColor: '#3E9437',
-					action: () => generatePDFWithCargoNumber(cargoNumber)
-				}
-			];
+                        // Создаем 3 кнопки
+                        const buttons = [
+                                {
+                                        text: '100 ячейка',
+                                        title: 'Печать 100',
+                                        bgColor: '#dcdcdc',
+                                        hoverColor: '#a62383',
+                                        action: generatePDFWithDataMatrix
+                                },
+                                {
+                                        text: 'Печатать брак',
+                                        title: 'Печать БРАК СОРТ НА ПВЗ',
+                                        bgColor: '#dcdcdc',
+                                        hoverColor: '#a69723',
+                                        action: function() {
+                                                console.log('🖨️ Запуск печати этикетки брака');
+                                                if (typeof window.printDefectLabel === 'function') {
+                                                        window.printDefectLabel('БРАК НА ПВЗ СОРТ');
+                                                } else {
+                                                        console.error('❌ Функция printDefectLabel не найдена!');
+                                                        alert('Ошибка: модуль печати этикетки брака не загружен');
+                                                }
+                                        }
+                                },
+                                {
+                                        text: 'Печатать этикетку',
+                                        title: `Печать номера груза: ${cargoNumber}`,
+                                        bgColor: '#dcdcdc',
+                                        hoverColor: '#3E9437',
+                                        action: () => generatePDFWithCargoNumber(cargoNumber)
+                                }
+                        ];
 
-			buttons.forEach((btnConfig) => {
-				const button = document.createElement('button');
-				button.type = 'button';
-				button.className = 'renum-drop-button';
-				button.title = btnConfig.title;
-				
-				// Поддержка многострочного текста
-				button.style.whiteSpace = 'pre-line';
-				button.style.lineHeight = '1.2';
-				button.textContent = btnConfig.text;
+                        buttons.forEach((btnConfig) => {
+                                const button = document.createElement('button');
+                                button.type = 'button';
+                                button.className = 'renum-drop-button';
+                                button.title = btnConfig.title;
+                                
+                                // Поддержка многострочного текста
+                                button.style.whiteSpace = 'pre-line';
+                                button.style.lineHeight = '1.2';
+                                button.textContent = btnConfig.text;
 
-				// Рассчитываем высоту кнопки
-				const buttonHeight = Math.floor((dropPanelHeight - (CONFIG.DROP_BUTTONS_GAP * 2)) / 3);
-				
-				// БАЗОВЫЕ СТИЛИ - только один раз!
-				button.style.cssText = `
-					display: flex;
-					align-items: center;
-					justify-content: center;
-					width: ${CONFIG.DROP_BUTTON_WIDTH}px;
-					height: ${buttonHeight}px;
-					min-width: ${CONFIG.DROP_BUTTON_WIDTH}px;
-					font-size: ${CONFIG.DROP_BUTTON_FONT}px;
-					font-weight: normal;
-					color: white;
-					background: #dcdcdc;
-					border: none;
-					border-radius: ${CONFIG.DROP_BUTTON_BORDER_RADIUS}px;
-					cursor: pointer;
-					flex-shrink: 0;
-					padding: 4px 6px;
-					box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-					text-align: center;
-					word-break: break-word;
-					font-family: inherit;
-					letter-spacing: 0.5px;
-					transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-					transform: translateY(0);
-				`;
+                                // Рассчитываем высоту кнопки
+                                const buttonHeight = Math.floor((dropPanelHeight - (CONFIG.DROP_BUTTONS_GAP * 2)) / 3);
+                                
+                                // БАЗОВЫЕ СТИЛИ - только один раз!
+                                button.style.cssText = `
+                                        display: flex;
+                                        align-items: center;
+                                        justify-content: center;
+                                        width: ${CONFIG.DROP_BUTTON_WIDTH}px;
+                                        height: ${buttonHeight}px;
+                                        min-width: ${CONFIG.DROP_BUTTON_WIDTH}px;
+                                        font-size: ${CONFIG.DROP_BUTTON_FONT}px;
+                                        font-weight: normal;
+                                        color: white;
+                                        background: #dcdcdc;
+                                        border: none;
+                                        border-radius: ${CONFIG.DROP_BUTTON_BORDER_RADIUS}px;
+                                        cursor: pointer;
+                                        flex-shrink: 0;
+                                        padding: 4px 6px;
+                                        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                                        text-align: center;
+                                        word-break: break-word;
+                                        font-family: inherit;
+                                        letter-spacing: 0.5px;
+                                        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                                        transform: translateY(0);
+                                `;
 
-				// Используем CSS-переменную для hover через глобальный стиль
-				button.style.setProperty('--hover-bg', btnConfig.hoverColor);
-				
-				// Добавляем инлайн-стиль для hover (резервный вариант)
-				const styleSheet = document.createElement('style');
-				styleSheet.textContent = `
-					button[title="${btnConfig.title}"]:hover {
-						background: #dcdcdc;
-					}
-				`;
-				document.head.appendChild(styleSheet);
+                                // Используем CSS-переменную для hover через глобальный стиль
+                                button.style.setProperty('--hover-bg', btnConfig.hoverColor);
+                                
+                                // Добавляем инлайн-стиль для hover (резервный вариант)
+                                const styleSheet = document.createElement('style');
+                                styleSheet.textContent = `
+                                        button[title="${btnConfig.title}"]:hover {
+                                                background: #dcdcdc;
+                                        }
+                                `;
+                                document.head.appendChild(styleSheet);
 
-				// УБИРАЕМ mouseenter/mouseleave обработчики - они больше не нужны!
-				// Вместо них используем CSS :hover
+                                // УБИРАЕМ mouseenter/mouseleave обработчики - они больше не нужны!
+                                // Вместо них используем CSS :hover
 
-				button.addEventListener('click', (e) => {
-					e.preventDefault();
-					e.stopPropagation();
-					if (typeof playBeepSound === 'function') playBeepSound();
-					btnConfig.action();
-				});
+                                button.addEventListener('click', (e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        if (typeof playBeepSound === 'function') playBeepSound();
+                                        btnConfig.action();
+                                });
 
-				buttonsContainer.appendChild(button);
-			});
+                                buttonsContainer.appendChild(button);
+                        });
 
-			// Вставляем контейнер с кнопками
-			parentContainer.insertBefore(buttonsContainer, dropPanel);
-			processedDropPanels.add(dropPanel);
-			
-			console.log('✅ Добавлены вертикальные кнопки для DROP панели');
+                        // Вставляем контейнер с кнопками
+                        parentContainer.insertBefore(buttonsContainer, dropPanel);
+                        processedDropPanels.add(dropPanel);
+                        
+                        console.log('✅ Добавлены вертикальные кнопки для DROP панели');
 
-		} catch (e) {
-			console.log('Ошибка при добавлении кнопок DROP панели:', e);
-		}
+                } catch (e) {
+                        console.log('Ошибка при добавлении кнопок DROP панели:', e);
+                }
     }
 
     function processDropPanelButtons() {
@@ -386,194 +416,194 @@
         }
     }
 
-	// =========================
-	// SKU BUTTON - С ИСКЛЮЧЕНИЕМ ДЛЯ ВЕРХНЕГО БЛОКА С ДАННЫМИ ГРУЗА
-	// =========================
-	const PLACEMENT_SKU_SELECTOR = 'span.mez-text-themeTextSecondary.mez-lining-nums.mez-proportional-nums';
-	const SKU_REGEX = /^[A-Za-z0-9\-]+$/;
+        // =========================
+        // SKU BUTTON - С ИСКЛЮЧЕНИЕМ ДЛЯ ВЕРХНЕГО БЛОКА С ДАННЫМИ ГРУЗА
+        // =========================
+        const PLACEMENT_SKU_SELECTOR = 'span.mez-text-themeTextSecondary.mez-lining-nums.mez-proportional-nums';
+        const SKU_REGEX = /^[A-Za-z0-9\-]+$/;
 
-	// Функция проверки, нужно ли пропустить этот span
-	function shouldSkipSkuButton(span) {
-		// Проверяем, находится ли span внутри контейнера с данными груза
-		const isInCargoContainer = span.closest('div.mez-flex.mez-flex-col.mez-gap-\\[16px\\].mez-grow');
-		
-		// Проверяем, есть ли рядом элемент с "Прямой поток" (признак верхнего блока)
-		const hasDirectFlow = span.closest('div.mez-flex.mez-flex-col.mez-gap-\\[4px\\]')?.querySelector('span[data-i18n-key*="PLACE.group"]');
-		
-		// Проверяем, есть ли рядом destination name
-		const hasDestination = span.closest('div.mez-flex.mez-flex-col.mez-gap-\\[4px\\]')?.querySelector('[data-testid="placement-destination-name"]');
-		
-		// Проверяем, что это не табличная строка (нет ag-row)
-		const isInTable = span.closest('.ag-row');
-		
-		// Пропускаем, если это верхний блок с данными груза (не таблица)
-		if ((isInCargoContainer || hasDirectFlow || hasDestination) && !isInTable) {
-			console.log('🚫 Пропускаем SKU в верхнем блоке груза:', span.textContent.trim());
-			return true;
-		}
-		
-		return false;
-	}
+        // Функция проверки, нужно ли пропустить этот span
+        function shouldSkipSkuButton(span) {
+                // Проверяем, находится ли span внутри контейнера с данными груза
+                const isInCargoContainer = span.closest('div.mez-flex.mez-flex-col.mez-gap-\\[16px\\].mez-grow');
+                
+                // Проверяем, есть ли рядом элемент с "Прямой поток" (признак верхнего блока)
+                const hasDirectFlow = span.closest('div.mez-flex.mez-flex-col.mez-gap-\\[4px\\]')?.querySelector('span[data-i18n-key*="PLACE.group"]');
+                
+                // Проверяем, есть ли рядом destination name
+                const hasDestination = span.closest('div.mez-flex.mez-flex-col.mez-gap-\\[4px\\]')?.querySelector('[data-testid="placement-destination-name"]');
+                
+                // Проверяем, что это не табличная строка (нет ag-row)
+                const isInTable = span.closest('.ag-row');
+                
+                // Пропускаем, если это верхний блок с данными груза (не таблица)
+                if ((isInCargoContainer || hasDirectFlow || hasDestination) && !isInTable) {
+                        console.log('🚫 Пропускаем SKU в верхнем блоке груза:', span.textContent.trim());
+                        return true;
+                }
+                
+                return false;
+        }
 
-	function addSkuButton(span, sku) {
-		if (!span || processedSkus.has(span)) return;
-		if (shouldSkipSkuButton(span)) {
-			processedSkus.add(span);
-			return;
-		}
+        function addSkuButton(span, sku) {
+                if (!span || processedSkus.has(span)) return;
+                if (shouldSkipSkuButton(span)) {
+                        processedSkus.add(span);
+                        return;
+                }
 
-		const td = span.closest('td');
-		if (!td) return;
+                const td = span.closest('td');
+                if (!td) return;
 
-		// Уже существует кнопка в этом td?
-		if (td.querySelector('.renum-sku-button')) {
-			processedSkus.add(span);
-			return;
-		}
-		
-		// уменьшаем левый отступ один раз
-		if (!td.dataset.renumPaddingFixed) {
-			td.style.paddingLeft = '2px'; // нужное значение
-			td.dataset.renumPaddingFixed = 'true';
-		}
+                // Уже существует кнопка в этом td?
+                if (td.querySelector('.renum-sku-button')) {
+                        processedSkus.add(span);
+                        return;
+                }
+                
+                // уменьшаем левый отступ один раз
+                if (!td.dataset.renumPaddingFixed) {
+                        td.style.paddingLeft = '2px'; // нужное значение
+                        td.dataset.renumPaddingFixed = 'true';
+                }
 
-		try {
-			const button = document.createElement('button');
-			button.type = 'button';
-			button.textContent = '⚠';
-			button.dataset.cargo = sku;
-			button.className = 'renum-sku-button';
+                try {
+                        const button = document.createElement('button');
+                        button.type = 'button';
+                        button.textContent = '⚠';
+                        button.dataset.cargo = sku;
+                        button.className = 'renum-sku-button';
 
-			button.style.cssText = `
-				display: inline-flex;
-				align-items: center;
-				justify-content: center;
-				width: ${CONFIG.BUTTON_SIZE}px;
-				height: ${CONFIG.BUTTON_SIZE}px;
-				min-width: ${CONFIG.BUTTON_SIZE}px;
-				font-size: ${CONFIG.BUTTON_FONT}px;
-				font-weight: bold;
-				color: #333;
-				background: #dcdcdc;
-				border: none;
-				border-radius: 9px;
-				cursor: pointer;
-				flex-shrink: 0;
-				transition: all 0.2s ease;
-				margin-right: 12px;
-				padding: 0;
-				line-height: 1;
-				box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-			`;
+                        button.style.cssText = `
+                                display: inline-flex;
+                                align-items: center;
+                                justify-content: center;
+                                width: ${CONFIG.BUTTON_SIZE}px;
+                                height: ${CONFIG.BUTTON_SIZE}px;
+                                min-width: ${CONFIG.BUTTON_SIZE}px;
+                                font-size: ${CONFIG.BUTTON_FONT}px;
+                                font-weight: bold;
+                                color: #333;
+                                background: #dcdcdc;
+                                border: none;
+                                border-radius: 9px;
+                                cursor: pointer;
+                                flex-shrink: 0;
+                                transition: all 0.2s ease;
+                                margin-right: 12px;
+                                padding: 0;
+                                line-height: 1;
+                                box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                        `;
 
-			button.addEventListener('mouseenter', () => {
-				button.style.background = '#F28383';
-				button.style.transform = 'translateY(-1px)';
-				button.style.boxShadow = '0 2px 4px rgba(0,0,0,0.15)';
-			});
+                        button.addEventListener('mouseenter', () => {
+                                button.style.background = '#F28383';
+                                button.style.transform = 'translateY(-1px)';
+                                button.style.boxShadow = '0 2px 4px rgba(0,0,0,0.15)';
+                        });
 
-			button.addEventListener('mouseleave', () => {
-				button.style.background = '#dcdcdc';
-				button.style.transform = 'translateY(0)';
-				button.style.boxShadow = '0 1px 2px rgba(0,0,0,0.1)';
-			});
+                        button.addEventListener('mouseleave', () => {
+                                button.style.background = '#dcdcdc';
+                                button.style.transform = 'translateY(0)';
+                                button.style.boxShadow = '0 1px 2px rgba(0,0,0,0.1)';
+                        });
 
-			button.addEventListener('click', (e) => {
-				e.preventDefault();
-				e.stopPropagation();
-				playBeepSound();
-				if (typeof generatePDFWithQR === 'function') {
-					generatePDFWithQR(sku);
-				}
-			});
+                        button.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                playBeepSound();
+                                if (typeof generatePDFWithQR === 'function') {
+                                        generatePDFWithQR(sku);
+                                }
+                        });
 
-			// --- КЛЮЧЕВОЙ МОМЕНТ ---
-			// Делаем td flex-контейнером, не трогая его содержимое
-			if (!td.dataset.renumFlexApplied) {
-				td.style.display = 'flex';
-				td.style.alignItems = 'center';
-				td.dataset.renumFlexApplied = 'true';
-			}
+                        // --- КЛЮЧЕВОЙ МОМЕНТ ---
+                        // Делаем td flex-контейнером, не трогая его содержимое
+                        if (!td.dataset.renumFlexApplied) {
+                                td.style.display = 'flex';
+                                td.style.alignItems = 'center';
+                                td.dataset.renumFlexApplied = 'true';
+                        }
 
-			// Вставляем кнопку ПЕРВОЙ
-			td.insertBefore(button, td.firstChild);
+                        // Вставляем кнопку ПЕРВОЙ
+                        td.insertBefore(button, td.firstChild);
 
-			processedSkus.add(span);
+                        processedSkus.add(span);
 
-		} catch (e) {
-			console.log('Ошибка при добавлении кнопки SKU:', e);
-		}
-	}
+                } catch (e) {
+                        console.log('Ошибка при добавлении кнопки SKU:', e);
+                }
+        }
 
 
-	function processSkuButtons() {
-		if (isProcessing) return;
-		if (!location.pathname.includes('/placement')) return;
+        function processSkuButtons() {
+                if (isProcessing) return;
+                if (!location.pathname.includes('/placement')) return;
 
-		isProcessing = true;
-		
-		try {
-			const spans = document.querySelectorAll(PLACEMENT_SKU_SELECTOR);
-			spans.forEach(span => {
-				if (!document.body.contains(span)) return;
-				if (processedSkus.has(span)) return;
-				
-				// Проверяем, не нужно ли пропустить этот span
-				if (shouldSkipSkuButton(span)) {
-					processedSkus.add(span);
-					return;
-				}
-				
-				// Пропускаем, если кнопка уже есть рядом
-				if (span.nextElementSibling?.classList.contains('renum-sku-button')) {
-					processedSkus.add(span);
-					return;
-				}
-				
-				const text = span.textContent.trim();
-				if (!SKU_REGEX.test(text)) return;
-				
-				// Добавляем небольшую задержку для стабильности
-				setTimeout(() => {
-					if (document.body.contains(span) && !processedSkus.has(span)) {
-						addSkuButton(span, text);
-		
-					}
-				}, 50);
-			});
-		} catch (e) {
-			console.log('Ошибка в processSkuButtons:', e);
-		} finally {
-			isProcessing = false;
-		}
-	}
+                isProcessing = true;
+                
+                try {
+                        const spans = document.querySelectorAll(PLACEMENT_SKU_SELECTOR);
+                        spans.forEach(span => {
+                                if (!document.body.contains(span)) return;
+                                if (processedSkus.has(span)) return;
+                                
+                                // Проверяем, не нужно ли пропустить этот span
+                                if (shouldSkipSkuButton(span)) {
+                                        processedSkus.add(span);
+                                        return;
+                                }
+                                
+                                // Пропускаем, если кнопка уже есть рядом
+                                if (span.nextElementSibling?.classList.contains('renum-sku-button')) {
+                                        processedSkus.add(span);
+                                        return;
+                                }
+                                
+                                const text = span.textContent.trim();
+                                if (!SKU_REGEX.test(text)) return;
+                                
+                                // Добавляем небольшую задержку для стабильности
+                                setTimeout(() => {
+                                        if (document.body.contains(span) && !processedSkus.has(span)) {
+                                                addSkuButton(span, text);
+                
+                                        }
+                                }, 50);
+                        });
+                } catch (e) {
+                        console.log('Ошибка в processSkuButtons:', e);
+                } finally {
+                        isProcessing = false;
+                }
+        }
 
-	// Добавляем CSS
-	const style = document.createElement('style');
-	style.textContent = `
-		.renum-sku-button {
-			box-sizing: content-box !important;
-			margin-left: 2px !important;
-		}
-		span.mez-text-themeTextSecondary.mez-lining-nums.mez-proportional-nums + .renum-sku-button {
-			vertical-align: middle !important;
-		}
-		.renum-drop-buttons-container {
-			animation: fadeIn 0.2s ease;
-		}
-		@keyframes fadeIn {
-			from { opacity: 0; transform: translateX(-10px); }
-			to { opacity: 1; transform: translateX(0); }
-		}
-		.renum-drop-button {
-			box-sizing: border-box !important;
-		}
-	`;
+        // Добавляем CSS
+        const style = document.createElement('style');
+        style.textContent = `
+                .renum-sku-button {
+                        box-sizing: content-box !important;
+                        margin-left: 2px !important;
+                }
+                span.mez-text-themeTextSecondary.mez-lining-nums.mez-proportional-nums + .renum-sku-button {
+                        vertical-align: middle !important;
+                }
+                .renum-drop-buttons-container {
+                        animation: fadeIn 0.2s ease;
+                }
+                @keyframes fadeIn {
+                        from { opacity: 0; transform: translateX(-10px); }
+                        to { opacity: 1; transform: translateX(0); }
+                }
+                .renum-drop-button {
+                        box-sizing: border-box !important;
+                }
+        `;
 
-	if (!document.head.querySelector('style[data-renum-sku]')) {
-		style.setAttribute('data-renum-sku', 'true');
-		document.head.appendChild(style);
-	}
+        if (!document.head.querySelector('style[data-renum-sku]')) {
+                style.setAttribute('data-renum-sku', 'true');
+                document.head.appendChild(style);
+        }
 
     // =========================
     // NOTIFICATION HANDLER
@@ -836,6 +866,7 @@
     }
 
     chrome.storage.sync.get({ renumEnabled: true }, data => {
+        initVoiceProfile();
         if (data.renumEnabled) startPlacement();
     });
 
@@ -853,221 +884,221 @@
 
 
 
-	// =========================
-	// LABEL PRINTER MODULE - Этикетка брака 85x54mm
-	// =========================
-	// Максимально просто - только рамка и текст
+        // =========================
+        // LABEL PRINTER MODULE - Этикетка брака 85x54mm
+        // =========================
+        // Максимально просто - только рамка и текст
 
-	(function() {
-		'use strict';
+        (function() {
+                'use strict';
 
-		function escapeHtml(text) {
-			if (!text) return '';
-			const div = document.createElement('div');
-			div.textContent = text;
-			return div.innerHTML;
-		}
+                function escapeHtml(text) {
+                        if (!text) return '';
+                        const div = document.createElement('div');
+                        div.textContent = text;
+                        return div.innerHTML;
+                }
 
-		function createDefectLabelHTML(text = 'БРАК НА ПВЗ СОРТ') {
-			const escapedText = escapeHtml(text);
-			
-			return `<!DOCTYPE html>
-	<html>
-	<head>
-		<meta charset="UTF-8">
-		<title>Этикетка брака</title>
-		<style>
-			/* ЖЕСТКАЯ ФИКСАЦИЯ РАЗМЕРОВ */
-			@page { 
-				size: 85mm 54mm;
-				margin: 0;
-				padding: 0;
-			}
-			
-			* {
-				margin: 0;
-				padding: 0;
-				box-sizing: border-box;
-				print-color-adjust: exact;
-				-webkit-print-color-adjust: exact;
-			}
-			
-			html, body {
-				width: 85mm;
-				height: 54mm;
-				margin: 0;
-				padding: 0;
-				background: white;
-			}
-			
-			body { 
-				width: 85mm;
-				height: 54mm;
-				margin: 0;
-				padding: 0;
-				font-family: 'Arial', 'Helvetica', sans-serif;
-				border: 3px solid #000;
-				background: white;
-				display: flex;
-				align-items: center;
-				justify-content: center;
-				transform: rotate(180deg);
-			}
-			
-			.defect-text {
-				font-size: 28px;
-				font-weight: 900;
-				color: #ff0000;
-				text-align: center;
-				line-height: 1.3;
-				text-transform: uppercase;
-				padding: 3mm;
-				word-break: break-word;
-			}
-			
-			.defect-line1 {
-				font-size: 28px;
-				font-weight: 900;
-				color: #ff0000;
-			}
-			
-			.defect-line2 {
-				font-size: 54px;
-				font-weight: 900;
-				color: #ff0000;
-				background: #ffff00;
-				border: 3px solid #000;
-				display: inline-block;
-				padding: 1mm 3mm;
-				border-radius: 2mm;
-				margin-top: 2mm;
-			}
-			
-			@media print {
-				html, body {
-					width: 85mm;
-					height: 54mm;
-					margin: 0;
-					padding: 0;
-				}
-				
-				@page {
-					size: 85mm 54mm;
-					margin: 0;
-					padding: 0;
-				}
-			}
-		</style>
-	</head>
-	<body>
-		<div class="defect-text">
-			<div class="defect-line1">⚠️ СОРТ НА ПВЗ ⚠️</div>
-			<div class="defect-line2">БРАК</div>
-		</div>
-		
-		<script>
-			window.onload = function() {
-				setTimeout(function() {
-					window.print();
-				}, 200);
-			};
-		</script>
-	</body>
-	</html>`;
-		}
+                function createDefectLabelHTML(text = 'БРАК НА ПВЗ СОРТ') {
+                        const escapedText = escapeHtml(text);
+                        
+                        return `<!DOCTYPE html>
+        <html>
+        <head>
+                <meta charset="UTF-8">
+                <title>Этикетка брака</title>
+                <style>
+                        /* ЖЕСТКАЯ ФИКСАЦИЯ РАЗМЕРОВ */
+                        @page { 
+                                size: 85mm 54mm;
+                                margin: 0;
+                                padding: 0;
+                        }
+                        
+                        * {
+                                margin: 0;
+                                padding: 0;
+                                box-sizing: border-box;
+                                print-color-adjust: exact;
+                                -webkit-print-color-adjust: exact;
+                        }
+                        
+                        html, body {
+                                width: 85mm;
+                                height: 54mm;
+                                margin: 0;
+                                padding: 0;
+                                background: white;
+                        }
+                        
+                        body { 
+                                width: 85mm;
+                                height: 54mm;
+                                margin: 0;
+                                padding: 0;
+                                font-family: 'Arial', 'Helvetica', sans-serif;
+                                border: 3px solid #000;
+                                background: white;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                transform: rotate(180deg);
+                        }
+                        
+                        .defect-text {
+                                font-size: 28px;
+                                font-weight: 900;
+                                color: #ff0000;
+                                text-align: center;
+                                line-height: 1.3;
+                                text-transform: uppercase;
+                                padding: 3mm;
+                                word-break: break-word;
+                        }
+                        
+                        .defect-line1 {
+                                font-size: 28px;
+                                font-weight: 900;
+                                color: #ff0000;
+                        }
+                        
+                        .defect-line2 {
+                                font-size: 54px;
+                                font-weight: 900;
+                                color: #ff0000;
+                                background: #ffff00;
+                                border: 3px solid #000;
+                                display: inline-block;
+                                padding: 1mm 3mm;
+                                border-radius: 2mm;
+                                margin-top: 2mm;
+                        }
+                        
+                        @media print {
+                                html, body {
+                                        width: 85mm;
+                                        height: 54mm;
+                                        margin: 0;
+                                        padding: 0;
+                                }
+                                
+                                @page {
+                                        size: 85mm 54mm;
+                                        margin: 0;
+                                        padding: 0;
+                                }
+                        }
+                </style>
+        </head>
+        <body>
+                <div class="defect-text">
+                        <div class="defect-line1">⚠️ СОРТ НА ПВЗ ⚠️</div>
+                        <div class="defect-line2">БРАК</div>
+                </div>
+                
+                <script>
+                        window.onload = function() {
+                                setTimeout(function() {
+                                        window.print();
+                                }, 200);
+                        };
+                </script>
+        </body>
+        </html>`;
+                }
 
-		function createDefectPrintIframe(text) {
-			const iframe = document.createElement('iframe');
-			iframe.id = 'defect-print-iframe-' + Date.now();
-			iframe.style.cssText = `
-				position: fixed;
-				top: 0;
-				left: 0;
-				width: 85mm;
-				height: 54mm;
-				border: none;
-				opacity: 0;
-				pointer-events: none;
-				z-index: -9999;
-			`;
-			
-			document.body.appendChild(iframe);
-			
-			const htmlContent = createDefectLabelHTML(text);
-			
-			const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
-			iframeDoc.open();
-			iframeDoc.write(htmlContent);
-			iframeDoc.close();
-			
-			setTimeout(() => {
-				try {
-					printDefectIframe(iframe);
-				} catch (error) {
-					console.error('Ошибка при создании iframe для печати:', error);
-					setTimeout(() => {
-						printDefectIframe(iframe);
-					}, 300);
-				}
-			}, 300);
-		}
+                function createDefectPrintIframe(text) {
+                        const iframe = document.createElement('iframe');
+                        iframe.id = 'defect-print-iframe-' + Date.now();
+                        iframe.style.cssText = `
+                                position: fixed;
+                                top: 0;
+                                left: 0;
+                                width: 85mm;
+                                height: 54mm;
+                                border: none;
+                                opacity: 0;
+                                pointer-events: none;
+                                z-index: -9999;
+                        `;
+                        
+                        document.body.appendChild(iframe);
+                        
+                        const htmlContent = createDefectLabelHTML(text);
+                        
+                        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                        iframeDoc.open();
+                        iframeDoc.write(htmlContent);
+                        iframeDoc.close();
+                        
+                        setTimeout(() => {
+                                try {
+                                        printDefectIframe(iframe);
+                                } catch (error) {
+                                        console.error('Ошибка при создании iframe для печати:', error);
+                                        setTimeout(() => {
+                                                printDefectIframe(iframe);
+                                        }, 300);
+                                }
+                        }, 300);
+                }
 
-		function printDefectIframe(iframe) {
-			setTimeout(() => {
-				try {
-					iframe.contentWindow.focus();
-					iframe.contentWindow.print();
-					
-					setTimeout(() => {
-						if (iframe.parentNode) {
-							iframe.parentNode.removeChild(iframe);
-						}
-					}, 1000);
-					
-					console.log('✅ Этикетка брака отправлена на печать');
-					
-				} catch (error) {
-					console.error('❌ Ошибка печати этикетки брака:', error);
-					
-					try {
-						const html = iframe.contentDocument.documentElement.outerHTML;
-						const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-						const url = URL.createObjectURL(blob);
-						const newTab = window.open(url, '_blank');
-						
-						if (newTab) {
-							setTimeout(() => {
-								try {
-									newTab.print();
-								} catch(e) {
-									console.log('Не удалось распечатать во вкладке');
-								}
-							}, 500);
-						}
-					} catch (fallbackError) {
-						console.error('Fallback также не сработал:', fallbackError);
-					}
-					
-					if (iframe.parentNode) {
-						iframe.parentNode.removeChild(iframe);
-					}
-				}
-			}, 500);
-		}
+                function printDefectIframe(iframe) {
+                        setTimeout(() => {
+                                try {
+                                        iframe.contentWindow.focus();
+                                        iframe.contentWindow.print();
+                                        
+                                        setTimeout(() => {
+                                                if (iframe.parentNode) {
+                                                        iframe.parentNode.removeChild(iframe);
+                                                }
+                                        }, 1000);
+                                        
+                                        console.log('✅ Этикетка брака отправлена на печать');
+                                        
+                                } catch (error) {
+                                        console.error('❌ Ошибка печати этикетки брака:', error);
+                                        
+                                        try {
+                                                const html = iframe.contentDocument.documentElement.outerHTML;
+                                                const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+                                                const url = URL.createObjectURL(blob);
+                                                const newTab = window.open(url, '_blank');
+                                                
+                                                if (newTab) {
+                                                        setTimeout(() => {
+                                                                try {
+                                                                        newTab.print();
+                                                                } catch(e) {
+                                                                        console.log('Не удалось распечатать во вкладке');
+                                                                }
+                                                        }, 500);
+                                                }
+                                        } catch (fallbackError) {
+                                                console.error('Fallback также не сработал:', fallbackError);
+                                        }
+                                        
+                                        if (iframe.parentNode) {
+                                                iframe.parentNode.removeChild(iframe);
+                                        }
+                                }
+                        }, 500);
+                }
 
-		// Экспортируем функции
-		window.DefectLabelPrinter = {
-			print: createDefectPrintIframe,
-			printDefect: createDefectPrintIframe,
-			createHTML: createDefectLabelHTML
-		};
+                // Экспортируем функции
+                window.DefectLabelPrinter = {
+                        print: createDefectPrintIframe,
+                        printDefect: createDefectPrintIframe,
+                        createHTML: createDefectLabelHTML
+                };
 
-		window.printDefectLabel = function(customText = 'БРАК НА ПВЗ СОРТ') {
-			console.log('🖨️ Печать этикетки брака 85x54мм:', customText);
-			createDefectPrintIframe(customText);
-		};
+                window.printDefectLabel = function(customText = 'БРАК НА ПВЗ СОРТ') {
+                        console.log('🖨️ Печать этикетки брака 85x54мм:', customText);
+                        createDefectPrintIframe(customText);
+                };
 
-		console.log('✅ Модуль печати этикетки брака 85x54мм загружен');
-		console.log('   Используйте: window.printDefectLabel()');
-	})();
+                console.log('✅ Модуль печати этикетки брака 85x54мм загружен');
+                console.log('   Используйте: window.printDefectLabel()');
+        })();
 })();

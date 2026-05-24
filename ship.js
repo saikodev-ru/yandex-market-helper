@@ -11,9 +11,9 @@
             'Один экземпляр оставьте себе, другой отдайте отправителю'
         ],
         // Паттерны URL
-		HOME_PATTERN: /(?:https?:\/\/[^/]+)?\/tpl-outlet\/\d{8}\/acceptance-request\/?(?:\?.*)?$/,
+                HOME_PATTERN: /(?:https?:\/\/[^/]+)?\/tpl-outlet\/\d{8}\/acceptance-request\/?(?:\?.*)?$/,
 
-		DETAIL_PATTERN: /(?:https?:\/\/[^/]+)?\/tpl-outlet\/\d{8}\/acceptance-request\/\d{8}\/?(?:\?.*)?$/
+                DETAIL_PATTERN: /(?:https?:\/\/[^/]+)?\/tpl-outlet\/\d{8}\/acceptance-request\/\d{8}\/?(?:\?.*)?$/
 
     };
 
@@ -23,6 +23,19 @@
     let isProcessing = false;
     let isInitialized = false;
     const processedPages = new Map();
+
+    // Динамический профиль озвучки
+    let voiceProfile = 'default';
+    try {
+        chrome.storage.sync.get(['voiceProfile'], ({ voiceProfile: profile }) => {
+            voiceProfile = profile || 'default';
+        });
+        chrome.storage.onChanged.addListener((changes) => {
+            if (changes.voiceProfile) {
+                voiceProfile = changes.voiceProfile.newValue || 'default';
+            }
+        });
+    } catch (e) {}
 
     // Вспомогательные функции
     const utils = {
@@ -106,9 +119,10 @@
          * Воспроизводит звук уведомления
          */
         playNotificationSound(type) {
+            const profile = (voiceProfile && voiceProfile !== 'default') ? voiceProfile : 'alice';
             const soundPath = type === 'avito' 
-                ? chrome.runtime.getURL('sounds/alice/ship/ship-avito.mp3')
-                : chrome.runtime.getURL('sounds/alice/ship/ship-c2c.mp3');
+                ? chrome.runtime.getURL(`sounds/${profile}/ship/ship-avito.mp3`)
+                : chrome.runtime.getURL(`sounds/${profile}/ship/ship-c2c.mp3`);
             
             const audio = new Audio(soundPath);
             audio.volume = 0.7;
