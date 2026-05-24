@@ -119,27 +119,43 @@ const SoundQueue = {
   },
 
   /** Воспроизвести MP3 через offscreen document.
-   *  Offscreen позволяет играть звук БЕЗ пользовательского клика по странице. */
+   *  Offscreen позволяет играть звук БЕЗ пользовательского клика по странице.
+   *  Если offscreen не ответил за 1.5с — переключаемся на локальный Audio().
+   *  Таким образом звук всегда воспроизведётся, независимо от состояния offscreen. */
   _playOffscreen(item) {
     let advanced = false;
+    let _localAudio = null;
+
     const advance = () => {
       if (advanced) return;
       advanced = true;
       clearTimeout(safetyTimer);
+      clearTimeout(localFallbackTimer);
+      if (_localAudio) { try { _localAudio.pause(); _localAudio.currentTime = 0; } catch(e){} _localAudio = null; }
       this._pendingRequests.delete(requestId);
       setTimeout(() => this._processNext(), this.GAP_MS);
     };
 
     const requestId = 'sq_' + (++this._requestCounter) + '_' + Date.now();
 
-    // Страховка: если offscreen не ответит через 10 сек
+    // Страховка: если ничего не ответит через 15 сек
     const safetyTimer = setTimeout(() => {
       console.warn(`\u{1F50A} Queue: timeout для "${item.label}" (id: ${requestId})`);
       advance();
-    }, 10000);
+    }, 15000);
 
     this._pendingRequests.set(requestId, { item, advance });
 
+    // ── Локальный fallback ──────────────────────────────────────
+    // Если offscreen не ответил за 1.5с — играем через new Audio()
+    const localFallbackTimer = setTimeout(() => {
+      console.log(`\u{1F50A} Queue: local fallback для "${item.label}"`);
+      _localAudio = _playLocalAudio(item.src, item.fallback, item.volume, item.speed, advance);
+    }, 1500);
+
+    // ── Отправляем в offscreen ────────────────────────────────────
+    // Offscreen работает БЕЗ user gesture — решает проблему
+    // автоплея после перезагрузки страницы.
     try {
       chrome.runtime.sendMessage({
         action: 'mh-play-audio',
@@ -151,7 +167,9 @@ const SoundQueue = {
       });
     } catch (e) {
       console.warn(`\u{1F50A} Queue: send failed for "${item.label}":`, e);
-      advance();
+      // Offscreen недоступен — сразу запускаем локально
+      clearTimeout(localFallbackTimer);
+      _localAudio = _playLocalAudio(item.src, item.fallback, item.volume, item.speed, advance);
     }
   },
 
@@ -584,6 +602,56 @@ function playPaymentErrorSound() {
   SoundQueue.add(src, { label: 'payment_error', fallback });
 }
 
+/** Воспроизвести MP3 локально через new Audio() с fallback.
+ *  @returns {Audio|null} - ссылка на Audio объект (можно остановить через pause())
+ *  @param {function} onDone - вызывается когда воспроизведение завершится */
+function _playLocalAudio(src, fallbackSrc, volume, speed, onDone) {
+  let audio = null;
+  try {
+    audio = new Audio(src);
+    audio.volume = volume ?? 0.8;
+    if (speed && speed !== 1.0) audio.playbackRate = speed;
+    audio.onended = () => { if (onDone) onDone(); };
+    audio.onerror = () => {
+      if (fallbackSrc && audio.src !== (typeof fallbackSrc === 'string' ? fallbackSrc : '')) {
+        try {
+          audio = new Audio(fallbackSrc);
+          audio.volume = volume ?? 0.8;
+          if (speed && speed !== 1.0) audio.playbackRate = speed;
+          audio.onended = () => { if (onDone) onDone(); };
+          audio.onerror = () => { if (onDone) onDone(); };
+          audio.play().catch(() => { if (onDone) onDone(); });
+        } catch(e) { if (onDone) onDone(); }
+      } else {
+        if (onDone) onDone();
+      }
+    };
+    audio.play().catch(() => {
+      // Автоплей заблокирован — пробуем fallback
+      if (fallbackSrc) {
+        try {
+          audio = new Audio(fallbackSrc);
+          audio.volume = volume ?? 0.8;
+          if (speed && speed !== 1.0) audio.playbackRate = speed;
+          audio.onended = () => { if (onDone) onDone(); };
+          audio.onerror = () => { if (onDone) onDone(); };
+          audio.play().catch(() => { if (onDone) onDone(); });
+        } catch(e) { if (onDone) onDone(); }
+      } else {
+        if (onDone) onDone();
+      }
+    });
+  } catch(e) { if (onDone) onDone(); }
+  return audio;
+}
+
+/** Воспроизвести звук НЕМЕДЛЕННО, вне очереди SoundQueue.
+ *  Используется для success-ship — должен звучать поверх других звуков. */
+function _playImmediate(src, options = {}) {
+  const { volume = 0.8, speed = 1.0, fallback } = options;
+  _playLocalAudio(src, fallback, volume, speed, null);
+}
+
 function playSuccessBeep() {
   if (!successShipSoundEnabled) return;
   try {
@@ -591,7 +659,8 @@ function playSuccessBeep() {
     if (now - lastSuccessShipPlay < 3000) return;
     lastSuccessShipPlay = now;
     const ss = getOrderTypeAudio('success-ship');
-    SoundQueue.add(ss.src, { label: 'success_ship', fallback: ss.fallback });
+    // Играем НЕМЕДЛЕННО, вне очереди — success-ship должен звучать поверх других звуков
+    _playImmediate(ss.src, { volume: 0.8, fallback: ss.fallback });
   } catch (error) {
     console.log('Ошибка в playSuccessBeep:', error);
   }
