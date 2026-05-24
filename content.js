@@ -118,8 +118,13 @@ const SoundQueue = {
     }
   },
 
-  /** Воспроизвести MP3 через offscreen document.
-   *  Offscreen позволяет играть звук БЕЗ пользовательского клика по странице. */
+  /** Воспроизвести MP3.
+   *  1. Сначала пробуем локально через new Audio() (работает если пользователь
+   *     уже взаимодействовал со страницей — 99% случаев)
+   *  2. Если браузер заблокировал автоплей (NotAllowedError) — отправляем
+   *     в offscreen document, который умеет играть без user gesture.
+   *  3. Fallback на alice-файлы если профильный файл не найден.
+   *  Страховка: advance() через 15 сек чтобы очередь не зависла. */
   _playOffscreen(item) {
     let advanced = false;
     const advance = () => {
@@ -131,28 +136,55 @@ const SoundQueue = {
     };
 
     const requestId = 'sq_' + (++this._requestCounter) + '_' + Date.now();
-
-    // Страховка: если offscreen не ответит через 10 сек
-    const safetyTimer = setTimeout(() => {
-      console.warn(`\u{1F50A} Queue: timeout для "${item.label}" (id: ${requestId})`);
-      advance();
-    }, 10000);
-
     this._pendingRequests.set(requestId, { item, advance });
 
-    try {
-      chrome.runtime.sendMessage({
-        action: 'mh-play-audio',
-        src: item.src,
-        volume: item.volume ?? 0.8,
-        speed: item.speed ?? 1.0,
-        fallbackSrc: item.fallback ?? null,
-        requestId
-      });
-    } catch (e) {
-      console.warn(`\u{1F50A} Queue: send failed for "${item.label}":`, e);
+    // Страховка: если ничего не ответит через 15 сек
+    const safetyTimer = setTimeout(() => {
+      console.warn(`\u{1F50A} Queue: timeout для "${item.label}"`);
       advance();
-    }
+    }, 15000);
+
+    let fallbackTried = false;
+
+    const playUrl = (url) => {
+      try {
+        const a = new Audio(url);
+        a.volume = item.volume ?? 0.8;
+        if (item.speed && item.speed !== 1.0) a.playbackRate = item.speed;
+        a.onended = () => { clearTimeout(safetyTimer); advance(); };
+        a.onerror = () => {
+          console.warn(`\u{1F50A} Queue: onerror "${item.label}" src=${url.slice(-40)}`);
+          if (!fallbackTried && item.fallback) {
+            fallbackTried = true;
+            playUrl(item.fallback);
+          } else {
+            clearTimeout(safetyTimer);
+            advance();
+          }
+        };
+        a.play().then(() => {
+          console.log(`\u{1F50A} Queue: playing "${item.label}" ✓`);
+        }).catch((err) => {
+          console.warn(`\u{1F50A} Queue: play() reject "${item.label}":`, err.name, err.message);
+          if (err.name === 'NotAllowedError') {
+            // Автоплей заблокирован — пробуем offscreen
+            _sendToOffscreen(item.src, item.fallback, item.volume, item.speed, advance, requestId);
+          } else if (!fallbackTried && item.fallback) {
+            fallbackTried = true;
+            playUrl(item.fallback);
+          } else {
+            clearTimeout(safetyTimer);
+            advance();
+          }
+        });
+      } catch (e) {
+        console.warn(`\u{1F50A} Queue: Audio() exception for "${item.label}":`, e);
+        clearTimeout(safetyTimer);
+        advance();
+      }
+    };
+
+    playUrl(item.src);
   },
 
   /** Обработать ответ от offscreen (вызывается из onMessage listener) */
@@ -584,6 +616,52 @@ function playPaymentErrorSound() {
   SoundQueue.add(src, { label: 'payment_error', fallback });
 }
 
+/** Отправить звук в offscreen document (работает без user gesture).
+ *  Используется как fallback когда new Audio() заблокирован браузером.
+ *  @param {function} advance - вызвать когда звук завершится */
+function _sendToOffscreen(src, fallbackSrc, volume, speed, advance, requestId) {
+  console.log(`\u{1F50A} Queue: offscreen fallback для requestId=${requestId}`);
+  try {
+    chrome.runtime.sendMessage({
+      action: 'mh-play-audio',
+      src, volume: volume ?? 0.8, speed: speed ?? 1.0,
+      fallbackSrc: fallbackSrc ?? null, requestId
+    });
+  } catch (e) {
+    console.warn(`\u{1F50A} Queue: offscreen send failed, advancing`);
+    advance();
+  }
+}
+
+/** Воспроизвести звук НЕМЕДЛЕННО, вне очереди SoundQueue.
+ *  Используется для success-ship — должен звучать поверх других звуков.
+ *  Пробует локально, при NotAllowedError — offscreen. */
+function _playImmediate(src, options = {}) {
+  const { volume = 0.8, speed = 1.0, fallback } = options;
+  let fallbackTried = false;
+
+  const playUrl = (url) => {
+    try {
+      const a = new Audio(url);
+      a.volume = volume;
+      if (speed && speed !== 1.0) a.playbackRate = speed;
+      a.onerror = () => {
+        if (!fallbackTried && fallback) { fallbackTried = true; playUrl(fallback); }
+      };
+      a.play().catch((err) => {
+        if (err.name === 'NotAllowedError') {
+          // Автоплей заблокирован — пробуем offscreen
+          const rid = 'imm_' + Date.now();
+          _sendToOffscreen(url, fallbackTried ? null : fallback, volume, speed, () => {}, rid);
+        } else if (!fallbackTried && fallback) {
+          fallbackTried = true; playUrl(fallback);
+        }
+      });
+    } catch(e) {}
+  };
+  playUrl(src);
+}
+
 function playSuccessBeep() {
   if (!successShipSoundEnabled) return;
   try {
@@ -591,7 +669,8 @@ function playSuccessBeep() {
     if (now - lastSuccessShipPlay < 3000) return;
     lastSuccessShipPlay = now;
     const ss = getOrderTypeAudio('success-ship');
-    SoundQueue.add(ss.src, { label: 'success_ship', fallback: ss.fallback });
+    // Играем НЕМЕДЛЕННО, вне очереди — success-ship должен звучать поверх других звуков
+    _playImmediate(ss.src, { volume: 0.8, fallback: ss.fallback });
   } catch (error) {
     console.log('Ошибка в playSuccessBeep:', error);
   }
