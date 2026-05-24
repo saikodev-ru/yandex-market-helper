@@ -1,15 +1,16 @@
-// === Аудио константы ===
-const AVITO_AUDIO             = chrome.runtime?.getURL('sounds/alice/ordertype/avito.mp3');
-const LAMODA_AUDIO            = chrome.runtime?.getURL('sounds/alice/ordertype/lamoda.mp3');
-const PLACEMENT_COMPLETE_AUDIO = chrome.runtime?.getURL('sounds/alice/ordertype/placement_complete.mp3');
-const NOOPEN_AUDIO            = chrome.runtime?.getURL('sounds/alice/ordertype/no_open.mp3');
-const CHINA_AUDIO             = chrome.runtime?.getURL('sounds/alice/ordertype/china.mp3');
-const GO_AUDIO                = chrome.runtime?.getURL('sounds/alice/ordertype/go.mp3');
-const ENTERCODE_AUDIO         = chrome.runtime?.getURL('sounds/alice/ordertype/entercode.mp3');
-const OPLATA_AUDIO            = chrome.runtime?.getURL('sounds/alice/ordertype/oplata.mp3');
-const SUCCESS_SHIP_AUDIO      = chrome.runtime?.getURL('sounds/alice/ordertype/success-ship.mp3');
-const CAMERA_AUDIO            = chrome.runtime?.getURL('sounds/alice/ordertype/camera.mp3');
-const POST_PAYMENT_AUDIO      = chrome.runtime?.getURL('sounds/alice/ordertype/post_payment.mp3');
+// === Динамические аудио-URL (поддержка смены профиля озвучки) ===
+// Возвращает { src, fallback } на основе текущего voiceProfile.
+// При смене профиля через попап — следующее воспроизведение
+// автоматически использует новые файлы без перезагрузки страницы.
+function getOrderTypeAudio(name) {
+  const profile = (voiceProfile && voiceProfile !== 'default') ? voiceProfile : 'alice';
+  return {
+    src:      chrome.runtime.getURL(`sounds/${profile}/ordertype/${name}.mp3`),
+    fallback: profile !== 'alice'
+      ? chrome.runtime.getURL(`sounds/alice/ordertype/${name}.mp3`)
+      : null
+  };
+}
 
 // === Профиль озвучки ===
 // 'default' — sounds/alice/num/N.mp3, sounds/alice/ordertype/*.mp3, sounds/alice/ship/*.mp3
@@ -68,173 +69,140 @@ let currentURL = location.href;
 const SoundQueue = {
   queue: [],
   isPlaying: false,
-  unlocked: false,   // true после первого пользовательского gesture
   GAP_MS: 100, // задержка между звуками в очереди (мс)
-
-  /** Разблокировать воспроизведение (вызывается после первого gesture) */
-  unlock() {
-    if (this.unlocked) return;
-    this.unlocked = true;
-    console.log('🔊 Queue: разблокирована (gesture получен)');
-    // Если звуки накопились до разблокировки — запускаем очередь
-    if (!this.isPlaying && this.queue.length > 0) this._processNext();
-  },
+  _requestCounter: 0,
+  _pendingRequests: new Map(), // requestId -> { advance, timer }
 
   /** Добавить один звук в очередь
-   *  @param {string|Function} src — URL mp3 или функция осциллятора
-   *  @param {Object} options — { volume, speed, label, duration } */
+   *  @param {string|Function} src - URL mp3 или функция осциллятора
+   *  @param {Object} options - { volume, speed, label, duration, fallback } */
   add(src, options = {}) {
-    const { volume = 0.8, speed = 1.0, label = '', duration = 300 } = options;
+    const { volume = 0.8, speed = 1.0, label = '', duration = 300, fallback } = options;
     const type = typeof src === 'function' ? 'fn' : 'mp3';
-    const item = { src, volume, speed, type, label, duration };
+    const item = { src, volume, speed, type, label, duration, fallback };
 
     this.queue.push(item);
-    console.log(`🔊 Queue: +"${label}" (в очереди: ${this.queue.length}, играет: ${this.isPlaying}, разблок: ${this.unlocked})`);
-    if (!this.isPlaying && this.unlocked) this._processNext();
+    console.log(`\u{1F50A} Queue: +"${label}" (\u0432 \u043E\u0447\u0435\u0440\u0435\u0434\u0438: ${this.queue.length}, \u0438\u0433\u0440\u0430\u0435\u0442: ${this.isPlaying})`);
+    if (!this.isPlaying) this._processNext();
   },
 
   /** Добавить цепочку звуков (строго по порядку)
-   *  @param {Array} items — [{ src, volume, speed, label, duration }] */
+   *  @param {Array} items - [{ src, volume, speed, label, duration, fallback }] */
   addChain(items) {
     for (const item of items) {
-      const { src, volume = 0.8, speed = 1.0, label = '', duration = 300 } = item;
+      const { src, volume = 0.8, speed = 1.0, label = '', duration = 300, fallback } = item;
       const type = typeof src === 'function' ? 'fn' : 'mp3';
-      const entry = { src, volume, speed, type, label, duration };
+      const entry = { src, volume, speed, type, label, duration, fallback };
       this.queue.push(entry);
     }
-    console.log(`🔊 Queue: +chain[${items.length}] (в очереди: ${this.queue.length}, играет: ${this.isPlaying}, разблок: ${this.unlocked})`);
-    if (!this.isPlaying && this.unlocked && this.queue.length > 0) this._processNext();
+    console.log(`\u{1F50A} Queue: +chain[${items.length}] (\u0432 \u043E\u0447\u0435\u0440\u0435\u0434\u0438: ${this.queue.length}, \u0438\u0433\u0440\u0430\u0435\u0442: ${this.isPlaying})`);
+    if (!this.isPlaying && this.queue.length > 0) this._processNext();
   },
 
-  /** Внутренний метод — обработать следующий звук в очереди */
+  /** Внутренний метод - обработать следующий звук в очереди */
   _processNext() {
     if (this.queue.length === 0) {
       this.isPlaying = false;
       return;
     }
-    // Если ещё нет gesture — ждём, queue накапливается
-    if (!this.unlocked) {
-      this.isPlaying = false;
-      return;
-    }
     this.isPlaying = true;
     const item = this.queue.shift();
-    console.log(`🔊 Queue: ▶ "${item.label}" (осталось: ${this.queue.length})`);
+    console.log(`\u{1F50A} Queue: \u25B6 "${item.label}" (\u043E\u0441\u0442\u0430\u043B\u043E\u0441\u044C: ${this.queue.length})`);
 
     if (item.type === 'fn') {
-      // Осцилляторная функция — выполняем и ждём оценочную длительность
       try { item.src(); } catch (e) { console.warn('Queue fn error:', e); }
       setTimeout(() => this._processNext(), (item.duration || 300) + this.GAP_MS);
     } else {
-      // MP3-файл — воспроизводим через new Audio()
-      this._playMp3(item);
+      this._playOffscreen(item);
     }
   },
 
-  /** Воспроизвести MP3 через new Audio() */
-  _playMp3(item) {
+  /** Воспроизвести MP3 через offscreen document.
+   *  Offscreen позволяет играть звук БЕЗ пользовательского клика по странице. */
+  _playOffscreen(item) {
     let advanced = false;
     const advance = () => {
       if (advanced) return;
       advanced = true;
+      clearTimeout(safetyTimer);
+      this._pendingRequests.delete(requestId);
       setTimeout(() => this._processNext(), this.GAP_MS);
     };
 
-    const tryPlay = (src, fallbackSrc) => {
-      try {
-        const audio = new Audio(src);
-        audio.volume = item.volume ?? 0.8;
-        if (item.speed && item.speed !== 1.0) {
-          audio.playbackRate = item.speed;
-        }
+    const requestId = 'sq_' + (++this._requestCounter) + '_' + Date.now();
 
-        audio.onended = advance;
-        audio.onerror = () => {
-          if (fallbackSrc) {
-            console.warn(`Queue: профильный звук не найден (${item.label}), fallback → ${fallbackSrc}`);
-            tryPlay(fallbackSrc, null);
-          } else {
-            console.warn(`Queue play error (${item.label}): audio error`);
-            advance();
-          }
-        };
+    // Страховка: если offscreen не ответит через 10 сек
+    const safetyTimer = setTimeout(() => {
+      console.warn(`\u{1F50A} Queue: timeout для "${item.label}" (id: ${requestId})`);
+      advance();
+    }, 10000);
 
-        const playPromise = audio.play();
-        if (playPromise && typeof playPromise.catch === 'function') {
-          playPromise.catch(e => {
-            if (e.name === 'NotAllowedError') {
-              // Не должно случаться после unlock(), но на всякий:
-              // возвращаем элемент в начало очереди и ждём gesture
-              console.warn(`Queue: NotAllowedError для "${item.label}" — снова ждём gesture`);
-              this.unlocked = false;
-              this.queue.unshift(item);
-              this.isPlaying = false;
-            } else {
-              console.warn(`Queue play error (${item.label}):`, e.name, e.message);
-              advance();
-            }
-          });
-        }
+    this._pendingRequests.set(requestId, { item, advance });
 
-        // Страховка: если onended не сработал — двигаемся дальше через 8 сек
-        setTimeout(advance, 8000);
-      } catch (e) {
-        console.warn(`Queue play error (${item.label}):`, e);
-        advance();
-      }
-    };
-
-    tryPlay(item.src, item.fallback ?? null);
+    try {
+      chrome.runtime.sendMessage({
+        action: 'mh-play-audio',
+        src: item.src,
+        volume: item.volume ?? 0.8,
+        speed: item.speed ?? 1.0,
+        fallbackSrc: item.fallback ?? null,
+        requestId
+      });
+    } catch (e) {
+      console.warn(`\u{1F50A} Queue: send failed for "${item.label}":`, e);
+      advance();
+    }
   },
 
-  /** Добавить приоритетный звук — ставится в начало очереди,
-   *  текущий звук доигрывает до конца, затем приоритетный.
-   *  @param {string|Function} src — URL mp3 или функция осциллятора
-   *  @param {Object} options — { volume, speed, label, duration } */
+  /** Обработать ответ от offscreen (вызывается из onMessage listener) */
+  _onAudioDone(requestId) {
+    const pending = this._pendingRequests.get(requestId);
+    if (pending) {
+      pending.advance();
+    }
+  },
+
+  /** Добавить приоритетный звук */
   addPriority(src, options = {}) {
-    const { volume = 0.8, speed = 1.0, label = '', duration = 300 } = options;
+    const { volume = 0.8, speed = 1.0, label = '', duration = 300, fallback } = options;
     const type = typeof src === 'function' ? 'fn' : 'mp3';
-    const item = { src, volume, speed, type, label, duration };
+    const item = { src, volume, speed, type, label, duration, fallback };
 
     this.queue.unshift(item);
-    console.log(`🔊 Queue: +priority "${label}" (в очереди: ${this.queue.length}, играет: ${this.isPlaying})`);
-    if (!this.isPlaying && this.unlocked) this._processNext();
+    console.log(`\u{1F50A} Queue: +priority "${label}" (\u0432 \u043E\u0447\u0435\u0440\u0435\u0434\u0438: ${this.queue.length}, \u0438\u0433\u0440\u0430\u0435\u0442: ${this.isPlaying})`);
+    if (!this.isPlaying) this._processNext();
   },
 
-  /** Добавить приоритетную цепочку — вся цепочка ставится в начало очереди */
+  /** Добавить приоритетную цепочку */
   addPriorityChain(items) {
     for (let i = items.length - 1; i >= 0; i--) {
-      const { src, volume = 0.8, speed = 1.0, label = '', duration = 300 } = items[i];
+      const { src, volume = 0.8, speed = 1.0, label = '', duration = 300, fallback } = items[i];
       const type = typeof src === 'function' ? 'fn' : 'mp3';
-      const entry = { src, volume, speed, type, label, duration };
+      const entry = { src, volume, speed, type, label, duration, fallback };
       this.queue.unshift(entry);
     }
-    console.log(`🔊 Queue: +priorityChain[${items.length}] (в очереди: ${this.queue.length}, играет: ${this.isPlaying})`);
-    if (!this.isPlaying && this.unlocked) this._processNext();
+    console.log(`\u{1F50A} Queue: +priorityChain[${items.length}] (\u0432 \u043E\u0447\u0435\u0440\u0435\u0434\u0438: ${this.queue.length}, \u0438\u0433\u0440\u0430\u0435\u0442: ${this.isPlaying})`);
+    if (!this.isPlaying) this._processNext();
   },
 
-  /** Очистить очередь (текущий звук доиграет до конца) */
+  /** Очистить очередь */
   clear() {
     this.queue = [];
-    console.log('🔊 Queue: очищена');
+    console.log('\u{1F50A} Queue: очищена');
   },
 
   /** Количество звуков в очереди */
   get pending() { return this.queue.length; }
 };
 
-// ── Разблокировка AudioContext при первом пользовательском gesture ───────────
-// Браузер блокирует audio.play() до первого взаимодействия со страницей.
-// Вешаем лисенеры на capture-фазу чтобы поймать gesture раньше любого кода.
-// После первого события — снимаем все лисенеры и флашим очередь.
-(function setupAudioUnlock() {
-  const EVENTS = ['click', 'keydown', 'pointerdown', 'touchstart'];
-  function onGesture() {
-    EVENTS.forEach(e => document.removeEventListener(e, onGesture, true));
-    SoundQueue.unlock();
+// ── Слушатель ответов от offscreen document ───────────────────────────────────
+// Background.js пересылает 'mh-audio-done' из offscreen → content script,
+// чтобы SoundQueue знала что звук завершился и можно играть следующий.
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.action === 'mh-audio-done' && msg.requestId) {
+    SoundQueue._onAudioDone(msg.requestId);
   }
-  EVENTS.forEach(e => document.addEventListener(e, onGesture, { capture: true, passive: true }));
-})();
+});
 
 
 // ============================================================
@@ -490,13 +458,13 @@ function playSound() {
   const now = Date.now();
   if (now - lastPlayTime < 5000) return;
   lastPlayTime = now;
-  if (!AVITO_AUDIO) return;
-  SoundQueue.add(AVITO_AUDIO, { label: 'avito' });
+  const { src, fallback } = getOrderTypeAudio('avito');
+  SoundQueue.add(src, { label: 'avito', fallback });
 }
 
 function playCameraSound() {
-  if (!CAMERA_AUDIO) return;
-  SoundQueue.add(CAMERA_AUDIO, { label: 'camera' });
+  const { src, fallback } = getOrderTypeAudio('camera');
+  SoundQueue.add(src, { label: 'camera', fallback });
 }
 
 /** Звук «Ввести код выдачи» — воспроизводится один раз на странице,
@@ -506,13 +474,8 @@ function playEnterCodeSound() {
   if (enterCodeSoundPlayed) return;
   enterCodeSoundPlayed = true;
 
-  if (!ENTERCODE_AUDIO) {
-    console.warn("ENTERCODE_AUDIO не найден");
-    return;
-  }
-
-  // Ставим в очередь — воспроизведётся когда AudioContext будет активен
-  SoundQueue.add(ENTERCODE_AUDIO, { label: 'entercode', volume: 0.8 });
+  const { src: ecSrc, fallback: ecFallback } = getOrderTypeAudio('entercode');
+  SoundQueue.add(ecSrc, { label: 'entercode', volume: 0.8, fallback: ecFallback });
 
   const stopOnKey = () => {
     // Очищаем очередь если звук ещё не проигрался
@@ -546,8 +509,8 @@ function playLamodaSound() {
   lastLamodaPlay = now;
   lamodaSoundPlayed = true;
 
-  if (!LAMODA_AUDIO) return;
-  SoundQueue.add(LAMODA_AUDIO, { label: 'lamoda' });
+  const { src: lmSrc, fallback: lmFallback } = getOrderTypeAudio('lamoda');
+  SoundQueue.add(lmSrc, { label: 'lamoda', fallback: lmFallback });
   setTimeout(() => { lamodaSoundPlayed = false; }, 10000);
 }
 
@@ -555,16 +518,16 @@ function playChinaSound() {
   const now = Date.now();
   if (now - lastChinaPlay < 5000) return;
   lastChinaPlay = now;
-  if (!CHINA_AUDIO) return;
-  SoundQueue.add(CHINA_AUDIO, { label: 'china' });
+  const { src, fallback } = getOrderTypeAudio('china');
+  SoundQueue.add(src, { label: 'china', fallback });
 }
 
 function playNoOpenSound() {
   const now = Date.now();
   if (now - lastNoOpenPlay < 5000) return;
   lastNoOpenPlay = now;
-  if (!NOOPEN_AUDIO) return;
-  SoundQueue.add(NOOPEN_AUDIO, { label: 'no_open' });
+  const { src, fallback } = getOrderTypeAudio('no_open');
+  SoundQueue.add(src, { label: 'no_open', fallback });
 }
 
 function playGoSound() {
@@ -575,7 +538,7 @@ function playGoSound() {
   // Ошибка-бип + go.mp3 играют в очереди по порядку
   SoundQueue.addChain([
     { src: playErrorBeep, duration: 300, label: 'error_beep' },
-    { src: GO_AUDIO, label: 'go' }
+    { ...getOrderTypeAudio('go'), label: 'go' }
   ]);
 }
 
@@ -586,10 +549,12 @@ function playOplataSound() {
   // Обновляем кулдаун success-ship, чтобы он не проигрался повторно
   // из другого триггера прямо после oplata
   lastSuccessShipPlay = Date.now();
+  const ss = getOrderTypeAudio('success-ship');
+  const op = getOrderTypeAudio('oplata');
   // success-ship + oplata играют в очереди по порядку
   SoundQueue.addChain([
-    { src: SUCCESS_SHIP_AUDIO, label: 'success_ship (oplata)' },
-    { src: OPLATA_AUDIO, label: 'oplata' }
+    { ...ss, label: 'success_ship (oplata)' },
+    { ...op, label: 'oplata' }
   ]);
   setTimeout(() => { oplataSoundPlayed = false; }, 10000);
 }
@@ -600,8 +565,8 @@ function playPostPaymentSound() {
   if (!voiceAlertsEnabled) return;
   if (postPaymentPlayed) return;
   postPaymentPlayed = true;
-  if (!POST_PAYMENT_AUDIO) return;
-  SoundQueue.add(POST_PAYMENT_AUDIO, { label: 'post_payment' });
+  const { src, fallback } = getOrderTypeAudio('post_payment');
+  SoundQueue.add(src, { label: 'post_payment', fallback });
   setTimeout(() => { postPaymentPlayed = false; }, 10000);
 }
 
@@ -611,8 +576,8 @@ function playSuccessBeep() {
     const now = Date.now();
     if (now - lastSuccessShipPlay < 3000) return;
     lastSuccessShipPlay = now;
-    if (!SUCCESS_SHIP_AUDIO) return;
-    SoundQueue.add(SUCCESS_SHIP_AUDIO, { label: 'success_ship' });
+    const ss = getOrderTypeAudio('success-ship');
+    SoundQueue.add(ss.src, { label: 'success_ship', fallback: ss.fallback });
   } catch (error) {
     console.log('Ошибка в playSuccessBeep:', error);
   }
@@ -623,8 +588,8 @@ function playPlacementCompleteSound() {
   const now = Date.now();
   if (now - lastPlacementCompletePlay < 5000) return;
   lastPlacementCompletePlay = now;
-  if (!PLACEMENT_COMPLETE_AUDIO) return;
-  SoundQueue.add(PLACEMENT_COMPLETE_AUDIO, { label: 'placement_complete' });
+  const { src, fallback } = getOrderTypeAudio('placement_complete');
+  SoundQueue.add(src, { label: 'placement_complete', fallback });
 }
 
 

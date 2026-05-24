@@ -5,13 +5,25 @@
 
     const CONFIG = {
         DEBOUNCE_DELAY: 300,
-        MP3_PATH: 'sounds/alice/num/',
-        SUCCESS_SOUND: 'sounds/alice/ordertype/success-ship.mp3',
         NUMBER_SPEED: 1.1,
         SUCCESS_SPEED: 1.1,
         VOLUME: 1.0,
         OVERLAP_MS: 550
     };
+
+    // Динамические пути на основе voiceProfile
+    let voiceProfile = 'default';
+    const DEFAULT_MP3_PATH = 'sounds/alice/num/';
+    const DEFAULT_SUCCESS_SOUND = 'sounds/alice/ordertype/success-ship.mp3';
+
+    function getMp3Path() {
+        const profile = (voiceProfile && voiceProfile !== 'default') ? voiceProfile : 'alice';
+        return `sounds/${profile}/num/`;
+    }
+    function getSuccessSoundPath() {
+        const profile = (voiceProfile && voiceProfile !== 'default') ? voiceProfile : 'alice';
+        return `sounds/${profile}/ordertype/success-ship.mp3`;
+    }
 
     let observer = null;
     let acceptancePageDetected = false;
@@ -27,10 +39,10 @@
     function playBeepSound(audioContext) {
         try {
             // три одинаковых быстрых сигнала подряд
-		playBeep(audioContext, 0, 550);
-		playBeep(audioContext, 0, 100);
-		playBeep(audioContext, 0.07, 650);
-		playBeep(audioContext, 0.07, 100);
+                playBeep(audioContext, 0, 550);
+                playBeep(audioContext, 0, 100);
+                playBeep(audioContext, 0.07, 650);
+                playBeep(audioContext, 0.07, 100);
 
             function playBeep(ctx, startTime, freq) {
                 const oscillator = ctx.createOscillator();
@@ -66,7 +78,7 @@
         // короткий сигнал перед числом
         playHighBeep();
 
-        const full = chrome.runtime.getURL(`${CONFIG.MP3_PATH}${number}.mp3`);
+        const full = chrome.runtime.getURL(`${getMp3Path()}${number}.mp3`);
         if (await checkFileExists(full)) {
             playAudio(full);
             return;
@@ -86,14 +98,36 @@
     }
 
     function playAudio(src, speed = CONFIG.NUMBER_SPEED) {
-        const a = new Audio(src);
-        a.volume = CONFIG.VOLUME;
-        a.playbackRate = speed;
-        a.play().catch(() => {});
+        try {
+            chrome.runtime.sendMessage({
+                action: 'mh-play-audio',
+                src,
+                volume: CONFIG.VOLUME,
+                speed,
+                fallbackSrc: null,
+                requestId: 'renum_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
+            }).catch(() => {
+                // Fallback: попробовать локальное воспроизведение
+                try {
+                    const a = new Audio(src);
+                    a.volume = CONFIG.VOLUME;
+                    a.playbackRate = speed;
+                    a.play().catch(() => {});
+                } catch (e) {}
+            });
+        } catch (e) {
+            // Fallback
+            try {
+                const a = new Audio(src);
+                a.volume = CONFIG.VOLUME;
+                a.playbackRate = speed;
+                a.play().catch(() => {});
+            } catch (e2) {}
+        }
     }
 
     function playSuccess() {
-        playAudio(chrome.runtime.getURL(CONFIG.SUCCESS_SOUND), CONFIG.SUCCESS_SPEED);
+        playAudio(chrome.runtime.getURL(getSuccessSoundPath()), CONFIG.SUCCESS_SPEED);
     }
 
     function playSequence(seq) {
@@ -116,7 +150,7 @@
         return out;
     }
 
-    const url = n => chrome.runtime.getURL(`${CONFIG.MP3_PATH}${n}.mp3`);
+    const url = n => chrome.runtime.getURL(`${getMp3Path()}${n}.mp3`);
 
     // ================= HELPERS =================
     function debounce(fn, ms) {
@@ -212,7 +246,26 @@
         }
     }, CONFIG.DEBOUNCE_DELAY);
 
+    // Читаем voiceProfile из chrome.storage.sync и слушаем изменения
+    function initVoiceProfile() {
+        try {
+            chrome.storage.sync.get(['voiceProfile'], ({ voiceProfile: profile }) => {
+                voiceProfile = profile || 'default';
+                console.log('🔊 RENUM voiceProfile:', voiceProfile);
+            });
+            chrome.storage.onChanged.addListener((changes) => {
+                if (changes.voiceProfile) {
+                    voiceProfile = changes.voiceProfile.newValue || 'default';
+                    console.log('🔊 RENUM voiceProfile changed:', voiceProfile);
+                }
+            });
+        } catch (e) {
+            console.log('RENUM: ошибка чтения voiceProfile:', e);
+        }
+    }
+
     function init() {
+        initVoiceProfile();
         observer = new MutationObserver(handleChange);
         observer.observe(document.body, {
             childList: true,

@@ -13,6 +13,7 @@
     "downloads.open",
     "declarativeNetRequest",
     "declarativeNetRequestWithHostAccess",
+    "offscreen",
     "webRequest"
   ],
   "host_permissions": [
