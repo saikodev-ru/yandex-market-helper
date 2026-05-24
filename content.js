@@ -167,8 +167,8 @@ const SoundQueue = {
         }).catch((err) => {
           console.warn(`\u{1F50A} Queue: play() reject "${item.label}":`, err.name, err.message);
           if (err.name === 'NotAllowedError') {
-            // Автоплей заблокирован — пробуем offscreen
-            _sendToOffscreen(item.src, item.fallback, item.volume, item.speed, advance, requestId);
+            // Автоплей заблокирован — пробуем скрытый iframe (extension page без user gesture)
+            _playInIframe(item.src, item.fallback, item.volume, item.speed, requestId);
           } else if (!fallbackTried && item.fallback) {
             fallbackTried = true;
             playUrl(item.fallback);
@@ -236,6 +236,93 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     SoundQueue._onAudioDone(msg.requestId);
   }
 });
+
+
+// ── Скрытый iframe для воспроизведения аудио без user gesture ─────────────
+// ЧИТЕРСКИЙ КОСТЫЛЬ: extension pages (chrome-extension://) НЕ подчиняются
+// политике автоплея Chrome. Скрытый iframe с extension URL может играть
+// MP3 сразу после загрузки страницы — без клика, без user gesture.
+//
+// Схема:
+//   content.js → postMessage → iframe (audio-player.html) → new Audio()
+//   → onended → parent.postMessage → content.js → SoundQueue.advance()
+//
+// Двухуровневая стратегия в _playOffscreen:
+//   1. new Audio() локально (работает если пользователь УЖЕ кликнул)
+//   2. Если NotAllowedError → postMessage в iframe (работает ВСЕГДА)
+// ─────────────────────────────────────────────────────────────────────────────
+
+let _audioIframe = null;
+let _audioIframeReady = false;
+let _audioIframeQueue = []; // буфер сообщений до загрузки iframe
+
+/** Создать скрытый iframe с audio-player.html (если ещё не создан).
+ *  Extension page внутри iframe может играть аудио без user gesture. */
+function _ensureAudioIframe() {
+  if (_audioIframe && _audioIframe.isConnected) return _audioIframe;
+
+  _audioIframe = document.createElement('iframe');
+  _audioIframe.src = chrome.runtime.getURL('audio-player.html');
+  _audioIframe.style.cssText = 'position:fixed;width:0;height:0;border:0;opacity:0;pointer-events:none;z-index:-1;';
+  _audioIframeReady = false;
+  _audioIframeQueue = [];
+
+  // append к body или documentElement (для document_start)
+  (document.body || document.documentElement).appendChild(_audioIframe);
+
+  // Слушаем сообщения от audio-player iframe
+  window.addEventListener('message', (event) => {
+    if (event.source !== _audioIframe?.contentWindow) return;
+    const data = event.data;
+    if (!data || !data.action) return;
+
+    if (data.action === 'mh-player-ready') {
+      _audioIframeReady = true;
+      console.log('\u{1F50A} Audio iframe ready');
+      // Отправляем все буферизованные команды
+      for (const msg of _audioIframeQueue) {
+        _audioIframe.contentWindow?.postMessage(msg, '*');
+      }
+      _audioIframeQueue = [];
+    }
+
+    if (data.action === 'mh-audio-done' && data.requestId) {
+      SoundQueue._onAudioDone(data.requestId);
+    }
+  });
+
+  console.log('\u{1F50A} Audio iframe created');
+  return _audioIframe;
+}
+
+/** Отправить звук в скрытый iframe (работает без user gesture).
+ *  @param {string} src - URL MP3
+ *  @param {string|null} fallbackSrc - fallback URL
+ *  @param {number} volume - громкость 0..1
+ *  @param {number} speed - скорость воспроизведения
+ *  @param {string} requestId - уникальный ID запроса */
+function _playInIframe(src, fallbackSrc, volume, speed, requestId) {
+  const iframe = _ensureAudioIframe();
+  const msg = {
+    action: 'mh-play',
+    src, fallbackSrc,
+    volume: volume ?? 0.8,
+    speed: speed ?? 1.0,
+    requestId
+  };
+
+  if (_audioIframeReady) {
+    try {
+      iframe.contentWindow.postMessage(msg, '*');
+      console.log(`\u{1F50A} Queue: \u2192 iframe "${requestId}"`);
+    } catch (e) {
+      console.warn('\u{1F50A} Queue: iframe postMessage failed:', e);
+    }
+  } else {
+    _audioIframeQueue.push(msg);
+    console.log(`\u{1F50A} Queue: iframe buffering "${requestId}"`);
+  }
+}
 
 
 // ============================================================
@@ -616,26 +703,13 @@ function playPaymentErrorSound() {
   SoundQueue.add(src, { label: 'payment_error', fallback });
 }
 
-/** Отправить звук в offscreen document (работает без user gesture).
- *  Используется как fallback когда new Audio() заблокирован браузером.
- *  @param {function} advance - вызвать когда звук завершится */
-function _sendToOffscreen(src, fallbackSrc, volume, speed, advance, requestId) {
-  console.log(`\u{1F50A} Queue: offscreen fallback для requestId=${requestId}`);
-  try {
-    chrome.runtime.sendMessage({
-      action: 'mh-play-audio',
-      src, volume: volume ?? 0.8, speed: speed ?? 1.0,
-      fallbackSrc: fallbackSrc ?? null, requestId
-    });
-  } catch (e) {
-    console.warn(`\u{1F50A} Queue: offscreen send failed, advancing`);
-    advance();
-  }
-}
+// _sendToOffscreen удалён — заменён на _playInIframe (скрытый iframe с extension page).
+// Extension pages (chrome-extension://) не подчиняются политике автоплея —
+// это надёжнее и проще чем offscreen document API.
 
 /** Воспроизвести звук НЕМЕДЛЕННО, вне очереди SoundQueue.
  *  Используется для success-ship — должен звучать поверх других звуков.
- *  Пробует локально, при NotAllowedError — offscreen. */
+ *  Пробует локально, при NotAllowedError — скрытый iframe. */
 function _playImmediate(src, options = {}) {
   const { volume = 0.8, speed = 1.0, fallback } = options;
   let fallbackTried = false;
@@ -650,9 +724,9 @@ function _playImmediate(src, options = {}) {
       };
       a.play().catch((err) => {
         if (err.name === 'NotAllowedError') {
-          // Автоплей заблокирован — пробуем offscreen
+          // Автоплей заблокирован — пробуем скрытый iframe
           const rid = 'imm_' + Date.now();
-          _sendToOffscreen(url, fallbackTried ? null : fallback, volume, speed, () => {}, rid);
+          _playInIframe(url, fallbackTried ? null : fallback, volume, speed, rid);
         } else if (!fallbackTried && fallback) {
           fallbackTried = true; playUrl(fallback);
         }
@@ -2011,6 +2085,8 @@ function safeInit() {
     initEventListeners();
     initObservers();
     initHotkeys();
+    // Предзагружаем скрытый iframe для аудио (extension page без user gesture)
+    _ensureAudioIframe();
     // MAIN world уведомляет когда Яндекс пытается проиграть «Оплата при получении».
     // Используем буферизацию: MAIN world инжектируется раньше, событие может придти
     // до того как мы повесили лисенер — сохраняем флаг и обрабатываем при первом gesture.

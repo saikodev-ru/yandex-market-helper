@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+<script>
+// audio-player.html — Скрытая extension page для воспроизведения MP3.
+//
+// ЧИТЕРСКИЙ КОСТЫЛЬ: extension pages (chrome-extension://) НЕ подчиняются
+// политике автоплея Chrome. Это позволяет проигрывать аудио БЕЗ user gesture —
+// сразу после загрузки страницы, без клика по ней.
+//
+// Загружается в скрытом iframe из content.js через postMessage.
+// Схема:
+//   content.js → postMessage → этот iframe → new Audio() → parent.postMessage → content.js
+
+let _currentAudio = null;
+
+window.addEventListener('message', (event) => {
+  const { action, src, volume, speed, fallbackSrc, requestId } = event.data || {};
+
+  if (action === 'mh-play') {
+    let done = false;
+    let fallbackTried = false;
+
+    const onDone = () => {
+      if (done) return;
+      done = true;
+      if (_currentAudio) { _currentAudio.pause(); _currentAudio = null; }
+      parent.postMessage({ action: 'mh-audio-done', requestId }, '*');
+    };
+
+    const tryPlay = (url) => {
+      if (_currentAudio) { _currentAudio.pause(); _currentAudio = null; }
+
+      try {
+        const audio = new Audio(url);
+        _currentAudio = audio;
+        audio.volume = volume ?? 0.8;
+        if (speed && speed !== 1.0) audio.playbackRate = speed;
+
+        audio.onended = onDone;
+        audio.onerror = () => {
+          console.warn('[AudioPlayer] onerror:', url.slice(-50));
+          if (!fallbackTried && fallbackSrc) {
+            fallbackTried = true;
+            tryPlay(fallbackSrc);
+          } else {
+            onDone();
+          }
+        };
+
+        audio.play().then(() => {
+          console.log('[AudioPlayer] playing:', url.slice(-50));
+        }).catch((err) => {
+          console.warn('[AudioPlayer] play() rejected:', err.name, err.message);
+          // Даже в extension page play() может偶尔 не сработать — пробуем fallback
+          if (!fallbackTried && fallbackSrc) {
+            fallbackTried = true;
+            tryPlay(fallbackSrc);
+          } else {
+            onDone();
+          }
+        });
+
+        // Страховка: 15 сек timeout
+        setTimeout(onDone, 15000);
+      } catch (e) {
+        console.warn('[AudioPlayer] Audio() exception:', e);
+        if (!fallbackTried && fallbackSrc) {
+          fallbackTried = true;
+          tryPlay(fallbackSrc);
+        } else {
+          onDone();
+        }
+      }
+    };
+
+    tryPlay(src);
+  }
+
+  if (action === 'mh-stop') {
+    if (_currentAudio) { _currentAudio.pause(); _currentAudio = null; }
+  }
+});
+
+// Сообщаем content.js что готовы
+parent.postMessage({ action: 'mh-player-ready' }, '*');
+</script>
+</body>
+</html>

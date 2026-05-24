@@ -121,6 +121,7 @@
         "sounds/mita/ordertype/*.mp3",
         "sounds/mita/ship/*.mp3",
         "issuing-sound-main.js",
+        "audio-player.html",
         "redesign.css",
         "ship-redesign.css"
       ],
