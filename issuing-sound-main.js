@@ -23,6 +23,9 @@
   // уведомляем content script чтобы проиграл свой вариант через SoundQueue
   const POST_PAYMENT_HASH = 'E2F9405756F98ED1339B540D1F604B6C';
 
+  // Хэш «Ошибка оплаты» — блокируем, уведомляем content script
+  const PAYMENT_ERROR_HASH = '1E8BF03A67E1AB13C8093DE56329D337';
+
   /** Проверяет, нужно ли блокировать воспроизведение этого URL */
   function shouldBlock(url) {
     if (!url || !url.includes(BLOCKED_HOST)) return false;
@@ -35,6 +38,16 @@
   /** Проверяет, это URL «Оплата при получении» */
   function isPostPayment(url) {
     return url && url.includes(BLOCKED_HOST) && url.includes(POST_PAYMENT_HASH);
+  }
+
+  /** Проверяет, это URL «Ошибка оплаты» */
+  function isPaymentError(url) {
+    return url && url.includes(BLOCKED_HOST) && url.includes(PAYMENT_ERROR_HASH);
+  }
+
+  /** Проверяет, это URL ошибки оплаты (alias) */
+  function isPaymentErrorUrl(url) {
+    return isPaymentError(url);
   }
 
   // ─── Перехват HTMLMediaElement.prototype.src ───────────────────────
@@ -54,6 +67,12 @@
           // Не устанавливаем src — Audio не будет пытаться загрузить
           return;
         }
+        if (isPaymentErrorUrl(value)) {
+          console.log('[Saiko] BLOCKED Yandex payment-error src, routing to SoundQueue:', value);
+          window.__saikoPaymentErrorPending = true;
+          document.dispatchEvent(new CustomEvent('saiko-payment-error'));
+          return;
+        }
         srcDescriptor.set.call(this, value);
       },
       get() {
@@ -69,6 +88,11 @@
     if (isPostPayment(this.src)) {
       console.log('[Saiko] BLOCKED Yandex post-payment play(), routing to SoundQueue:', this.src);
       document.dispatchEvent(new CustomEvent('saiko-post-payment'));
+      return Promise.resolve();
+    }
+    if (isPaymentErrorUrl(this.src)) {
+      console.log('[Saiko] BLOCKED Yandex payment-error play(), routing to SoundQueue:', this.src);
+      document.dispatchEvent(new CustomEvent('saiko-payment-error'));
       return Promise.resolve();
     }
     if (shouldBlock(this.src)) {
@@ -93,6 +117,15 @@
         headers: { 'Content-Type': 'audio/mpeg' },
       }));
     }
+    if (isPaymentErrorUrl(url)) {
+      console.log('[Saiko] BLOCKED Yandex payment-error fetch(), routing to SoundQueue:', url);
+      document.dispatchEvent(new CustomEvent('saiko-payment-error'));
+      return Promise.resolve(new Response(null, {
+        status: 200,
+        statusText: 'OK',
+        headers: { 'Content-Type': 'audio/mpeg' },
+      }));
+    }
     if (shouldBlock(url)) {
       console.log('[Saiko] BLOCKED Yandex sound fetch():', url);
       return Promise.resolve(new Response(null, {
@@ -110,6 +143,9 @@
     if (isPostPayment(url)) {
       this._saikoPostPayment = true;
       console.log('[Saiko] BLOCKED Yandex post-payment XHR, routing to SoundQueue:', url);
+    } else if (isPaymentErrorUrl(url)) {
+      this._saikoPaymentError = true;
+      console.log('[Saiko] BLOCKED Yandex payment-error XHR, routing to SoundQueue:', url);
     } else if (shouldBlock(url)) {
       this._saikoBlocked = true;
       console.log('[Saiko] BLOCKED Yandex sound XHR:', url);
@@ -122,7 +158,10 @@
     if (this._saikoPostPayment) {
       document.dispatchEvent(new CustomEvent('saiko-post-payment'));
     }
-    if (this._saikoPostPayment || this._saikoBlocked) {
+    if (this._saikoPaymentError) {
+      document.dispatchEvent(new CustomEvent('saiko-payment-error'));
+    }
+    if (this._saikoPostPayment || this._saikoPaymentError || this._saikoBlocked) {
       Object.defineProperty(this, 'readyState', { value: 4, writable: true });
       Object.defineProperty(this, 'status', { value: 200, writable: true });
       Object.defineProperty(this, 'response', { value: new ArrayBuffer(0), writable: true });

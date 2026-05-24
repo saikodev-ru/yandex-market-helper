@@ -3,14 +3,36 @@
     'use strict';
 
     const CONFIG = {
-        MP3_PATH: 'sounds/alice/num/',
-        SUCCESS_SOUND: 'sounds/alice/ordertype/success-ship.mp3',
+        DEBOUNCE_DELAY: 300,
         NUMBER_SPEED: 1.2,
         VOLUME: 1.0,
         OVERLAP_MS: 500,
         RETRY_LIMIT: 20, 
         RETRY_DELAY: 150 
     };
+
+    // Динамические пути на основе voiceProfile
+    let voiceProfile = 'default';
+
+    function getMp3Path() {
+        const profile = (voiceProfile && voiceProfile !== 'default') ? voiceProfile : 'alice';
+        return `sounds/${profile}/num/`;
+    }
+
+    // Читаем voiceProfile из chrome.storage.sync
+    function initVoiceProfile() {
+        try {
+            chrome.storage.sync.get(['voiceProfile'], ({ voiceProfile: profile }) => {
+                voiceProfile = profile || 'default';
+            });
+            chrome.storage.onChanged.addListener((changes) => {
+                if (changes.voiceProfile) {
+                    voiceProfile = changes.voiceProfile.newValue || 'default';
+                }
+            });
+        } catch (e) {}
+    }
+    initVoiceProfile();
 
     let lastVoicedNumber = null;
     let currentAudioObjects = []; 
@@ -53,7 +75,7 @@
             osc.stop(ctx.currentTime + startTime + 0.08);
         };
         playBeep(0, 550); playBeep(0.1, 550);
-		playBeep(0, 100); playBeep(0.1, 100);
+                playBeep(0, 100); playBeep(0.1, 100);
     }
 
     function playError8Bit() {
@@ -154,17 +176,17 @@
     async function speakWithMp3(number) {
         if (isNaN(number)) return;
         clearAllAudio();
-        const fullUrl = chrome.runtime.getURL(`${CONFIG.MP3_PATH}${number}.mp3`);
+        const fullUrl = chrome.runtime.getURL(`${getMp3Path()}${number}.mp3`);
         const getSeq = (n) => {
             const s = [];
-            if (n <= 20) s.push(chrome.runtime.getURL(`${CONFIG.MP3_PATH}${n}.mp3`));
+            if (n <= 20) s.push(chrome.runtime.getURL(`${getMp3Path()}${n}.mp3`));
             else if (n < 100) {
                 const t = Math.floor(n / 10) * 10, o = n % 10;
-                s.push(chrome.runtime.getURL(`${CONFIG.MP3_PATH}${t}.mp3`));
-                if (o > 0) s.push(chrome.runtime.getURL(`${CONFIG.MP3_PATH}${o}.mp3`));
+                s.push(chrome.runtime.getURL(`${getMp3Path()}${t}.mp3`));
+                if (o > 0) s.push(chrome.runtime.getURL(`${getMp3Path()}${o}.mp3`));
             } else if (n < 1000) {
                 const h = Math.floor(n / 100) * 100, r = n % 100;
-                s.push(chrome.runtime.getURL(`${CONFIG.MP3_PATH}${h}.mp3`));
+                s.push(chrome.runtime.getURL(`${getMp3Path()}${h}.mp3`));
                 if (r > 0) s.push(...getSeq(r));
             }
             return s;
