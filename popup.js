@@ -1,115 +1,85 @@
-// Все настройки расширения: [id чекбокса, ключ в storage, значение по умолчанию]
 const SETTINGS = [
   { id: 'toggleRedesign',          key: 'redesignEnabled',          def: true  },
   { id: 'toggleShipRedesign',      key: 'shipRedesignEnabled',      def: true  },
   { id: 'toggleCompactHint',       key: 'compactHintEnabled',       def: true  },
   { id: 'toggleCompactNews',       key: 'compactNewsEnabled',       def: true  },
-  { id: 'toggleNewIssuing',        key: 'newIssuingEnabled',        def: false },
-  { id: 'toggleNewAcceptance',     key: 'newAcceptanceEnabled',     def: false },
-  { id: 'toggleNoBarcode',         key: 'noBarcodeEnabled',        def: true  },
-  { id: 'toggleVoiceAlerts',       key: 'voiceAlertsEnabled',      def: true  },
-  { id: 'togglePlacementComplete', key: 'placementCompleteEnabled', def: true  },
-  { id: 'toggleGoSound',           key: 'goSoundEnabled',          def: true  },
-  { id: 'toggleEnterCodeSound',    key: 'enterCodeSoundEnabled',   def: true  },
-  { id: 'toggleOplataSound',       key: 'oplataSoundEnabled',      def: true  },
-  { id: 'toggleSuccessShipSound',  key: 'successShipSoundEnabled', def: true  },
-  { id: 'toggleHotkeys',           key: 'hotkeysEnabled',          def: true  },
-  { id: 'toggleRenum',             key: 'renumEnabled',             def: true  },
-  { id: 'toggleIssuingCellVoice',   key: 'issuingCellVoiceEnabled',   def: true  },
   { id: 'toggleFadeInElements',    key: 'fadeInElementsEnabled',    def: true  },
+  { id: 'toggleNewIssuing',        key: 'newIssuingEnabled',        def: false },
+  { id: 'toggleIssuingCellVoice',  key: 'issuingCellVoiceEnabled',  def: true  },
+  { id: 'toggleNewAcceptance',     key: 'newAcceptanceEnabled',     def: false },
+  { id: 'toggleNoBarcode',         key: 'noBarcodeEnabled',         def: true  },
+  { id: 'toggleVoiceAlerts',       key: 'voiceAlertsEnabled',       def: true  },
+  { id: 'toggleRenum',             key: 'renumEnabled',             def: true  },
+  { id: 'togglePlacementComplete', key: 'placementCompleteEnabled', def: true  },
+  { id: 'toggleGoSound',           key: 'goSoundEnabled',           def: true  },
+  { id: 'toggleEnterCodeSound',    key: 'enterCodeSoundEnabled',    def: true  },
+  { id: 'toggleOplataSound',       key: 'oplataSoundEnabled',       def: true  },
+  { id: 'toggleSuccessShipSound',  key: 'successShipSoundEnabled',  def: true  },
+  { id: 'toggleHotkeys',           key: 'hotkeysEnabled',           def: true  },
 ];
 
 document.addEventListener('DOMContentLoaded', () => {
-  const storageKeys = [...SETTINGS.map(s => s.key), 'theme'];
+  const storageKeys = [...SETTINGS.map(s => s.key), 'voiceProfile', 'hiddenNewsBlocks'];
 
-  // Загружаем сохранённые значения и выставляем состояния тогглов + тему
   chrome.storage.sync.get(storageKeys, (data) => {
+    // Тогглы
     SETTINGS.forEach(({ id, key, def }) => {
-      const checkbox = document.getElementById(id);
-      if (!checkbox) return;
-      const value = (data[key] !== undefined) ? data[key] : def;
-      checkbox.checked = value;
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.checked = data[key] !== undefined ? data[key] : def;
     });
 
-    // Восстанавливаем тему
-    const theme = data.theme || 'dark';
-    document.documentElement.setAttribute('data-theme', theme);
+    // Голос
+    setActiveVoice(data.voiceProfile || 'alice');
+
+    // Скрытые новости
+    updateRestoreRow(data.hiddenNewsBlocks || []);
   });
 
-  // Вешаем обработчики: изменение тоггла → сохраняем в storage
+  // Обработчики тогглов
   SETTINGS.forEach(({ id, key }) => {
-    const checkbox = document.getElementById(id);
-    if (!checkbox) return;
-    checkbox.addEventListener('change', () => {
-      chrome.storage.sync.set({ [key]: checkbox.checked });
-    });
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', () => chrome.storage.sync.set({ [key]: el.checked }));
   });
 
-  // Кнопка смены темы
-  const themeBtn = document.getElementById('themeBtn');
-  if (themeBtn) {
-    themeBtn.addEventListener('click', () => {
-      const current = document.documentElement.getAttribute('data-theme');
-      const next = current === 'dark' ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', next);
-      chrome.storage.sync.set({ theme: next });
+  // ── Выбор голоса (pill-кнопки) ──
+  function setActiveVoice(voice) {
+    document.querySelectorAll('.vpill').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.voice === voice);
     });
   }
 
-  // ── Восстановление скрытых новостных блоков ──────────────────────────────
+  document.querySelectorAll('.vpill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const voice = btn.dataset.voice;
+      setActiveVoice(voice);
+      chrome.storage.sync.set({ voiceProfile: voice });
+    });
+  });
+
+  // ── Восстановление скрытых новостей ──
   const restoreRow  = document.getElementById('restoreNewsRow');
   const restoreDesc = document.getElementById('restoreNewsDesc');
   const restoreBtn  = document.getElementById('restoreNewsBtn');
 
-  function updateRestoreRow() {
-    chrome.storage.sync.get({ hiddenNewsBlocks: [] }, data => {
-      const count = (data.hiddenNewsBlocks || []).length;
-      if (count > 0) {
-        restoreRow.style.display = '';
-        restoreDesc.textContent = `Скрыто блоков: ${count}`;
-      } else {
-        restoreRow.style.display = 'none';
-      }
-    });
+  function updateRestoreRow(list) {
+    const count = (list || []).length;
+    if (restoreRow) restoreRow.style.display = count > 0 ? '' : 'none';
+    if (restoreDesc) restoreDesc.textContent = `Скрыто блоков: ${count}`;
   }
-  updateRestoreRow();
 
   if (restoreBtn) {
     restoreBtn.addEventListener('click', () => {
-      // Сбрасываем список скрытых
       chrome.storage.sync.set({ hiddenNewsBlocks: [] }, () => {
-        updateRestoreRow();
-        // Отправляем сообщение во все вкладки с маркетом
-        chrome.tabs.query({ url: ['*://hubs.market.yandex.ru/*', '*://logistics.market.yandex.ru/*'] }, tabs => {
-          tabs.forEach(tab => {
-            chrome.tabs.sendMessage(tab.id, { action: 'mh-restore-news' }).catch(() => {});
-          });
-        });
+        updateRestoreRow([]);
+        chrome.tabs.query(
+          { url: ['*://hubs.market.yandex.ru/*', '*://logistics.market.yandex.ru/*'] },
+          tabs => tabs.forEach(tab =>
+            chrome.tabs.sendMessage(tab.id, { action: 'mh-restore-news' }).catch(() => {})
+          )
+        );
       });
     });
-  }
-
-  // === Профиль голоса для озвучки ячеек ===
-  const voiceProfileSelect = document.getElementById('voiceProfileSelect');
-  if (voiceProfileSelect) {
-    // Загружаем сохранённый профиль
-    chrome.storage.sync.get({ voiceProfile: 'default' }, ({ voiceProfile }) => {
-      voiceProfileSelect.value = voiceProfile || 'default';
-    });
-
-    voiceProfileSelect.addEventListener('change', () => {
-      chrome.storage.sync.set({ voiceProfile: voiceProfileSelect.value });
-    });
-
-    // Показываем/скрываем строку выбора голоса в зависимости от чекбокса
-    const cellVoiceToggle = document.getElementById('toggleIssuingCellVoice');
-    const profileRow = document.getElementById('voiceProfileRow');
-    if (cellVoiceToggle && profileRow) {
-      const updateProfileRowVisibility = () => {
-        profileRow.style.display = cellVoiceToggle.checked ? '' : 'none';
-      };
-      updateProfileRowVisibility();
-      cellVoiceToggle.addEventListener('change', updateProfileRowVisibility);
-    }
   }
 });
