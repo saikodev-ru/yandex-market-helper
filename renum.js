@@ -5,8 +5,8 @@
 
     const CONFIG = {
         DEBOUNCE_DELAY: 300,
-        MP3_PATH: 'sounds/num/',
-        SUCCESS_SOUND: 'sounds/success-ship.mp3',
+        MP3_PATH: 'sounds/alice/num/',
+        SUCCESS_SOUND: 'sounds/alice/ordertype/success-ship.mp3',
         NUMBER_SPEED: 1.1,
         SUCCESS_SPEED: 1.1,
         VOLUME: 1.0,

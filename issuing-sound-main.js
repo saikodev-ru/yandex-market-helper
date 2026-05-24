@@ -48,6 +48,8 @@
       set(value) {
         if (isPostPayment(value)) {
           console.log('[Saiko] BLOCKED Yandex post-payment src, routing to SoundQueue:', value);
+          // Если content script ещё не повесил лисенер — сохраняем флаг
+          window.__saikoPostPaymentPending = true;
           document.dispatchEvent(new CustomEvent('saiko-post-payment'));
           // Не устанавливаем src — Audio не будет пытаться загрузить
           return;

@@ -107,8 +107,8 @@
          */
         playNotificationSound(type) {
             const soundPath = type === 'avito' 
-                ? chrome.runtime.getURL('sounds/other/ship-avito.mp3')
-                : chrome.runtime.getURL('sounds/other/ship-c2c.mp3');
+                ? chrome.runtime.getURL('sounds/alice/ship/ship-avito.mp3')
+                : chrome.runtime.getURL('sounds/alice/ship/ship-c2c.mp3');
             
             const audio = new Audio(soundPath);
             audio.volume = 0.7;

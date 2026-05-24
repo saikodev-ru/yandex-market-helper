@@ -1,20 +1,20 @@
 // === Аудио константы ===
-const AVITO_AUDIO             = chrome.runtime?.getURL('sounds/avito.mp3');
-const LAMODA_AUDIO            = chrome.runtime?.getURL('sounds/lamoda.mp3');
-const PLACEMENT_COMPLETE_AUDIO = chrome.runtime?.getURL('sounds/placement_complete.mp3');
-const NOOPEN_AUDIO            = chrome.runtime?.getURL('sounds/no_open.mp3');
-const CHINA_AUDIO             = chrome.runtime?.getURL('sounds/china.mp3');
-const GO_AUDIO                = chrome.runtime?.getURL('sounds/go.mp3');
-const ENTERCODE_AUDIO         = chrome.runtime?.getURL('sounds/entercode.mp3');
-const OPLATA_AUDIO            = chrome.runtime?.getURL('sounds/oplata.mp3');
-const SUCCESS_SHIP_AUDIO      = chrome.runtime?.getURL('sounds/success-ship.mp3');
-const CAMERA_AUDIO            = chrome.runtime?.getURL('sounds/camera.mp3');
-const POST_PAYMENT_AUDIO      = chrome.runtime?.getURL('sounds/post_payment.mp3');
+const AVITO_AUDIO             = chrome.runtime?.getURL('sounds/alice/ordertype/avito.mp3');
+const LAMODA_AUDIO            = chrome.runtime?.getURL('sounds/alice/ordertype/lamoda.mp3');
+const PLACEMENT_COMPLETE_AUDIO = chrome.runtime?.getURL('sounds/alice/ordertype/placement_complete.mp3');
+const NOOPEN_AUDIO            = chrome.runtime?.getURL('sounds/alice/ordertype/no_open.mp3');
+const CHINA_AUDIO             = chrome.runtime?.getURL('sounds/alice/ordertype/china.mp3');
+const GO_AUDIO                = chrome.runtime?.getURL('sounds/alice/ordertype/go.mp3');
+const ENTERCODE_AUDIO         = chrome.runtime?.getURL('sounds/alice/ordertype/entercode.mp3');
+const OPLATA_AUDIO            = chrome.runtime?.getURL('sounds/alice/ordertype/oplata.mp3');
+const SUCCESS_SHIP_AUDIO      = chrome.runtime?.getURL('sounds/alice/ordertype/success-ship.mp3');
+const CAMERA_AUDIO            = chrome.runtime?.getURL('sounds/alice/ordertype/camera.mp3');
+const POST_PAYMENT_AUDIO      = chrome.runtime?.getURL('sounds/alice/ordertype/post_payment.mp3');
 
 // === Профиль озвучки ===
-// 'default' — sounds/num/N.mp3
-// 'alice'   — sounds/alice/N.mp3 (если файл есть), иначе fallback на default
-// 'mita'    — sounds/mita/N.mp3 (если файл есть), иначе fallback на default
+// 'default' — sounds/alice/num/N.mp3, sounds/alice/ordertype/*.mp3, sounds/alice/ship/*.mp3
+// 'alice'   — sounds/alice/{num,ordertype,ship}/ (основной голос)
+// 'mita'    — sounds/mita/{num,ordertype,ship}/ (альтернативный голос)
 let voiceProfile = 'default';
 
 // === Глобальные переменные ===
@@ -68,7 +68,17 @@ let currentURL = location.href;
 const SoundQueue = {
   queue: [],
   isPlaying: false,
+  unlocked: false,   // true после первого пользовательского gesture
   GAP_MS: 100, // задержка между звуками в очереди (мс)
+
+  /** Разблокировать воспроизведение (вызывается после первого gesture) */
+  unlock() {
+    if (this.unlocked) return;
+    this.unlocked = true;
+    console.log('🔊 Queue: разблокирована (gesture получен)');
+    // Если звуки накопились до разблокировки — запускаем очередь
+    if (!this.isPlaying && this.queue.length > 0) this._processNext();
+  },
 
   /** Добавить один звук в очередь
    *  @param {string|Function} src — URL mp3 или функция осциллятора
@@ -79,8 +89,8 @@ const SoundQueue = {
     const item = { src, volume, speed, type, label, duration };
 
     this.queue.push(item);
-    console.log(`🔊 Queue: +"${label}" (в очереди: ${this.queue.length}, играет: ${this.isPlaying})`);
-    if (!this.isPlaying) this._processNext();
+    console.log(`🔊 Queue: +"${label}" (в очереди: ${this.queue.length}, играет: ${this.isPlaying}, разблок: ${this.unlocked})`);
+    if (!this.isPlaying && this.unlocked) this._processNext();
   },
 
   /** Добавить цепочку звуков (строго по порядку)
@@ -92,13 +102,18 @@ const SoundQueue = {
       const entry = { src, volume, speed, type, label, duration };
       this.queue.push(entry);
     }
-    console.log(`🔊 Queue: +chain[${items.length}] (в очереди: ${this.queue.length}, играет: ${this.isPlaying})`);
-    if (!this.isPlaying && this.queue.length > 0) this._processNext();
+    console.log(`🔊 Queue: +chain[${items.length}] (в очереди: ${this.queue.length}, играет: ${this.isPlaying}, разблок: ${this.unlocked})`);
+    if (!this.isPlaying && this.unlocked && this.queue.length > 0) this._processNext();
   },
 
   /** Внутренний метод — обработать следующий звук в очереди */
   _processNext() {
     if (this.queue.length === 0) {
+      this.isPlaying = false;
+      return;
+    }
+    // Если ещё нет gesture — ждём, queue накапливается
+    if (!this.unlocked) {
       this.isPlaying = false;
       return;
     }
@@ -116,7 +131,7 @@ const SoundQueue = {
     }
   },
 
-  /** Воспроизвести MP3 через new Audio() — MEI домена разрешает autoplay */
+  /** Воспроизвести MP3 через new Audio() */
   _playMp3(item) {
     let advanced = false;
     const advance = () => {
@@ -147,8 +162,17 @@ const SoundQueue = {
         const playPromise = audio.play();
         if (playPromise && typeof playPromise.catch === 'function') {
           playPromise.catch(e => {
-            console.warn(`Queue play error (${item.label}):`, e.name, e.message);
-            advance();
+            if (e.name === 'NotAllowedError') {
+              // Не должно случаться после unlock(), но на всякий:
+              // возвращаем элемент в начало очереди и ждём gesture
+              console.warn(`Queue: NotAllowedError для "${item.label}" — снова ждём gesture`);
+              this.unlocked = false;
+              this.queue.unshift(item);
+              this.isPlaying = false;
+            } else {
+              console.warn(`Queue play error (${item.label}):`, e.name, e.message);
+              advance();
+            }
           });
         }
 
@@ -174,21 +198,19 @@ const SoundQueue = {
 
     this.queue.unshift(item);
     console.log(`🔊 Queue: +priority "${label}" (в очереди: ${this.queue.length}, играет: ${this.isPlaying})`);
-    if (!this.isPlaying) this._processNext();
+    if (!this.isPlaying && this.unlocked) this._processNext();
   },
 
   /** Добавить приоритетную цепочку — вся цепочка ставится в начало очереди */
   addPriorityChain(items) {
-    const entries = [];
     for (let i = items.length - 1; i >= 0; i--) {
       const { src, volume = 0.8, speed = 1.0, label = '', duration = 300 } = items[i];
       const type = typeof src === 'function' ? 'fn' : 'mp3';
       const entry = { src, volume, speed, type, label, duration };
-      entries.unshift(entry);
       this.queue.unshift(entry);
     }
     console.log(`🔊 Queue: +priorityChain[${items.length}] (в очереди: ${this.queue.length}, играет: ${this.isPlaying})`);
-    if (!this.isPlaying) this._processNext();
+    if (!this.isPlaying && this.unlocked) this._processNext();
   },
 
   /** Очистить очередь (текущий звук доиграет до конца) */
@@ -200,6 +222,19 @@ const SoundQueue = {
   /** Количество звуков в очереди */
   get pending() { return this.queue.length; }
 };
+
+// ── Разблокировка AudioContext при первом пользовательском gesture ───────────
+// Браузер блокирует audio.play() до первого взаимодействия со страницей.
+// Вешаем лисенеры на capture-фазу чтобы поймать gesture раньше любого кода.
+// После первого события — снимаем все лисенеры и флашим очередь.
+(function setupAudioUnlock() {
+  const EVENTS = ['click', 'keydown', 'pointerdown', 'touchstart'];
+  function onGesture() {
+    EVENTS.forEach(e => document.removeEventListener(e, onGesture, true));
+    SoundQueue.unlock();
+  }
+  EVENTS.forEach(e => document.addEventListener(e, onGesture, { capture: true, passive: true }));
+})();
 
 
 // ============================================================
@@ -605,14 +640,14 @@ function playPlacementCompleteSound() {
 /** Строит последовательность MP3-файлов для озвучки числа ячейки.
  *  Если есть готовый файл (N.mp3) — использует его напрямую.
  *  Иначе — разбирает на имеющиеся компоненты (сотни + десятки + единицы).
- *  Поддерживает профиль озвучки: sounds/{profile}/N.mp3 → fallback на sounds/num/N.mp3 */
+ *  Поддерживает профиль озвучки: sounds/{profile}/num/N.mp3 → fallback на sounds/alice/num/N.mp3 */
 function buildCellNumberSequence(num) {
-  const DEFAULT_PATH = 'sounds/num/';
+  const DEFAULT_PATH = 'sounds/alice/num/';
   const profilePath  = (voiceProfile && voiceProfile !== 'default')
-    ? `sounds/${voiceProfile}/`
+    ? `sounds/${voiceProfile}/num/`
     : null;
 
-  // Возвращает URL с учётом профиля: сначала пробуем profile/, потом num/
+  // Возвращает URL с учётом профиля: сначала пробуем profile/num/, потом alice/num/
   const url = n => {
     if (profilePath) {
       // Мы не можем синхронно проверить существование файла в extension,
@@ -1917,8 +1952,16 @@ function safeInit() {
     initEventListeners();
     initObservers();
     initHotkeys();
-    // MAIN world уведомляет когда Яндекс пытается проиграть «Оплата при получении»
+    // MAIN world уведомляет когда Яндекс пытается проиграть «Оплата при получении».
+    // Используем буферизацию: MAIN world инжектируется раньше, событие может придти
+    // до того как мы повесили лисенер — сохраняем флаг и обрабатываем при первом gesture.
     document.addEventListener('saiko-post-payment', playPostPaymentSound);
+    // Буфер: если событие уже было до нашего лисенера (race condition при быстрой загрузке)
+    if (window.__saikoPostPaymentPending) {
+      window.__saikoPostPaymentPending = false;
+      // Воспроизведём при разблокировке AudioContext (после gesture)
+      SoundQueue.add(POST_PAYMENT_AUDIO, { label: 'post_payment (buffered)' });
+    }
     injectPvzSoundBlocker();  // MAIN world: блокируем Яндексовскую TTS
     handleContextInvalidation();
   } catch (e) {
