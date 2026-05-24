@@ -26,23 +26,35 @@
     };
 
     // Динамические пути на основе voiceProfile
+    // Fallback: если файл профиля не найден — используется alice.
     let voiceProfile = 'default';
 
+    function getProfile() {
+        return (voiceProfile && voiceProfile !== 'default') ? voiceProfile : 'alice';
+    }
     function getMp3Path() {
-        const profile = (voiceProfile && voiceProfile !== 'default') ? voiceProfile : 'alice';
-        return `sounds/${profile}/num/`;
+        return `sounds/${getProfile()}/num/`;
+    }
+    function getFallbackMp3Path() {
+        return getProfile() !== 'alice' ? 'sounds/alice/num/' : null;
     }
     function getSuccessSoundPath() {
-        const profile = (voiceProfile && voiceProfile !== 'default') ? voiceProfile : 'alice';
-        return `sounds/${profile}/ordertype/success-ship.mp3`;
+        return `sounds/${getProfile()}/ordertype/success-ship.mp3`;
+    }
+    function getFallbackSuccessSoundPath() {
+        return getProfile() !== 'alice' ? 'sounds/alice/ordertype/success-ship.mp3' : null;
     }
     function getDropSoundPath() {
-        const profile = (voiceProfile && voiceProfile !== 'default') ? voiceProfile : 'alice';
-        return `sounds/${profile}/num/drop.mp3`;
+        return `sounds/${getProfile()}/num/drop.mp3`;
+    }
+    function getFallbackDropSoundPath() {
+        return getProfile() !== 'alice' ? 'sounds/alice/num/drop.mp3' : null;
     }
     function getReturnSoundPath() {
-        const profile = (voiceProfile && voiceProfile !== 'default') ? voiceProfile : 'alice';
-        return `sounds/${profile}/num/return.mp3`;
+        return `sounds/${getProfile()}/num/return.mp3`;
+    }
+    function getFallbackReturnSoundPath() {
+        return getProfile() !== 'alice' ? 'sounds/alice/num/return.mp3' : null;
     }
 
     // Читаем voiceProfile из chrome.storage.sync
@@ -90,66 +102,132 @@
     async function speakWithMp3(number) {
         if (number == null || typeof number !== 'number') return;
         stopAllOtherAudio();
-        
+
+        const fallbackPath = getFallbackMp3Path();
         const fullNumberUrl = chrome.runtime.getURL(`${getMp3Path()}${number}.mp3`);
         const hasFullFile = await checkFileExists(fullNumberUrl);
-
-        if (hasFullFile) {
-            const audio = new Audio(fullNumberUrl);
-            audio.volume = CONFIG.VOLUME;
-            audio.playbackRate = CONFIG.NUMBER_SPEED;
-            await audio.play().catch(() => {});
-            return;
-        }
 
         const getSequence = (num) => {
             const seq = [];
             if (num <= 20) {
-                seq.push(chrome.runtime.getURL(`${getMp3Path()}${num}.mp3`));
+                seq.push({
+                    src: chrome.runtime.getURL(`${getMp3Path()}${num}.mp3`),
+                    fallback: fallbackPath ? chrome.runtime.getURL(`${fallbackPath}${num}.mp3`) : null
+                });
             } else if (num < 100) {
                 const tens = Math.floor(num / 10) * 10;
                 const ones = num % 10;
-                seq.push(chrome.runtime.getURL(`${getMp3Path()}${tens}.mp3`));
-                if (ones > 0) seq.push(chrome.runtime.getURL(`${getMp3Path()}${ones}.mp3`));
+                seq.push({
+                    src: chrome.runtime.getURL(`${getMp3Path()}${tens}.mp3`),
+                    fallback: fallbackPath ? chrome.runtime.getURL(`${fallbackPath}${tens}.mp3`) : null
+                });
+                if (ones > 0) seq.push({
+                    src: chrome.runtime.getURL(`${getMp3Path()}${ones}.mp3`),
+                    fallback: fallbackPath ? chrome.runtime.getURL(`${fallbackPath}${ones}.mp3`) : null
+                });
             } else if (num < 1000) {
                 const hundreds = Math.floor(num / 100) * 100;
                 const remainder = num % 100;
-                seq.push(chrome.runtime.getURL(`${getMp3Path()}${hundreds}.mp3`));
+                seq.push({
+                    src: chrome.runtime.getURL(`${getMp3Path()}${hundreds}.mp3`),
+                    fallback: fallbackPath ? chrome.runtime.getURL(`${fallbackPath}${hundreds}.mp3`) : null
+                });
                 if (remainder > 0) seq.push(...getSequence(remainder));
             }
             return seq;
         };
 
+        const urlWithFallback = (url) => ({
+            src: url,
+            fallback: fallbackPath ? chrome.runtime.getURL(url.replace(getMp3Path(), fallbackPath)) : null
+        });
+
+        if (hasFullFile) {
+            const item = urlWithFallback(fullNumberUrl);
+            const audio = new Audio(item.src);
+            audio.volume = CONFIG.VOLUME;
+            audio.playbackRate = CONFIG.NUMBER_SPEED;
+            audio.onerror = () => {
+                if (item.fallback) {
+                    const a2 = new Audio(item.fallback);
+                    a2.volume = CONFIG.VOLUME;
+                    a2.playbackRate = CONFIG.NUMBER_SPEED;
+                    a2.play().catch(() => {});
+                }
+            };
+            await audio.play().catch(() => {
+                if (item.fallback) {
+                    const a2 = new Audio(item.fallback);
+                    a2.volume = CONFIG.VOLUME;
+                    a2.playbackRate = CONFIG.NUMBER_SPEED;
+                    a2.play().catch(() => {});
+                }
+            });
+            return;
+        }
+
         const numberSequence = getSequence(number);
         if (numberSequence.length === 0) return;
 
-        numberSequence.forEach((src, i) => {
+        numberSequence.forEach(({ src, fallback }, i) => {
             setTimeout(() => {
                 const audio = new Audio(src);
                 audio.volume = CONFIG.VOLUME;
                 audio.playbackRate = CONFIG.NUMBER_SPEED;
-                audio.play().catch(() => {});
+                audio.onerror = () => {
+                    if (fallback) {
+                        const a2 = new Audio(fallback);
+                        a2.volume = CONFIG.VOLUME;
+                        a2.playbackRate = CONFIG.NUMBER_SPEED;
+                        a2.play().catch(() => {});
+                    }
+                };
+                audio.play().catch(() => {
+                    if (fallback) {
+                        const a2 = new Audio(fallback);
+                        a2.volume = CONFIG.VOLUME;
+                        a2.playbackRate = CONFIG.NUMBER_SPEED;
+                        a2.play().catch(() => {});
+                    }
+                });
             }, i * CONFIG.OVERLAP_MS);
         });
     }
 
-    function playSuccess() {
-        const audio = new Audio(chrome.runtime.getURL(getSuccessSoundPath()));
+    function playAudioWithFallback(pathFn, fallbackFn, speed) {
+        const src = chrome.runtime.getURL(pathFn());
+        const fallback = fallbackFn ? chrome.runtime.getURL(fallbackFn()) : null;
+        const audio = new Audio(src);
         audio.volume = CONFIG.VOLUME;
-        audio.playbackRate = CONFIG.SUCCESS_SPEED;
-        audio.play().catch(() => {});
+        audio.playbackRate = speed || CONFIG.SUCCESS_SPEED;
+        audio.onerror = () => {
+            if (fallback) {
+                const a2 = new Audio(fallback);
+                a2.volume = CONFIG.VOLUME;
+                a2.playbackRate = speed || CONFIG.SUCCESS_SPEED;
+                a2.play().catch(() => {});
+            }
+        };
+        audio.play().catch(() => {
+            if (fallback) {
+                const a2 = new Audio(fallback);
+                a2.volume = CONFIG.VOLUME;
+                a2.playbackRate = speed || CONFIG.SUCCESS_SPEED;
+                a2.play().catch(() => {});
+            }
+        });
+    }
+
+    function playSuccess() {
+        playAudioWithFallback(getSuccessSoundPath, getFallbackSuccessSoundPath);
     }
 
     function playDrop() {
-        const audio = new Audio(chrome.runtime.getURL(getDropSoundPath()));
-        audio.volume = CONFIG.VOLUME;
-        audio.play().catch(() => {});
+        playAudioWithFallback(getDropSoundPath, getFallbackDropSoundPath);
     }
 
     function playReturn() {
-        const audio = new Audio(chrome.runtime.getURL(getReturnSoundPath()));
-        audio.volume = CONFIG.VOLUME;
-        audio.play().catch(() => {});
+        playAudioWithFallback(getReturnSoundPath, getFallbackReturnSoundPath);
     }
 
     // =========================

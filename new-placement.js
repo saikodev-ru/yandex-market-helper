@@ -12,11 +12,17 @@
     };
 
     // Динамические пути на основе voiceProfile
+    // Fallback: если файл профиля не найден — используется alice.
     let voiceProfile = 'default';
 
+    function getProfile() {
+        return (voiceProfile && voiceProfile !== 'default') ? voiceProfile : 'alice';
+    }
     function getMp3Path() {
-        const profile = (voiceProfile && voiceProfile !== 'default') ? voiceProfile : 'alice';
-        return `sounds/${profile}/num/`;
+        return `sounds/${getProfile()}/num/`;
+    }
+    function getFallbackMp3Path() {
+        return getProfile() !== 'alice' ? 'sounds/alice/num/' : null;
     }
 
     // Читаем voiceProfile из chrome.storage.sync
@@ -176,28 +182,56 @@
     async function speakWithMp3(number) {
         if (isNaN(number)) return;
         clearAllAudio();
-        const fullUrl = chrome.runtime.getURL(`${getMp3Path()}${number}.mp3`);
+        const profileUrl = chrome.runtime.getURL(`${getMp3Path()}${number}.mp3`);
+        const fallbackPath = getFallbackMp3Path();
         const getSeq = (n) => {
             const s = [];
-            if (n <= 20) s.push(chrome.runtime.getURL(`${getMp3Path()}${n}.mp3`));
+            if (n <= 20) s.push({
+                src: chrome.runtime.getURL(`${getMp3Path()}${n}.mp3`),
+                fallback: fallbackPath ? chrome.runtime.getURL(`${fallbackPath}${n}.mp3`) : null
+            });
             else if (n < 100) {
                 const t = Math.floor(n / 10) * 10, o = n % 10;
-                s.push(chrome.runtime.getURL(`${getMp3Path()}${t}.mp3`));
-                if (o > 0) s.push(chrome.runtime.getURL(`${getMp3Path()}${o}.mp3`));
+                s.push({
+                    src: chrome.runtime.getURL(`${getMp3Path()}${t}.mp3`),
+                    fallback: fallbackPath ? chrome.runtime.getURL(`${fallbackPath}${t}.mp3`) : null
+                });
+                if (o > 0) s.push({
+                    src: chrome.runtime.getURL(`${getMp3Path()}${o}.mp3`),
+                    fallback: fallbackPath ? chrome.runtime.getURL(`${fallbackPath}${o}.mp3`) : null
+                });
             } else if (n < 1000) {
                 const h = Math.floor(n / 100) * 100, r = n % 100;
-                s.push(chrome.runtime.getURL(`${getMp3Path()}${h}.mp3`));
+                s.push({
+                    src: chrome.runtime.getURL(`${getMp3Path()}${h}.mp3`),
+                    fallback: fallbackPath ? chrome.runtime.getURL(`${fallbackPath}${h}.mp3`) : null
+                });
                 if (r > 0) s.push(...getSeq(r));
             }
             return s;
         };
-        const exists = await fetch(fullUrl, {method:'HEAD'}).then(r => r.ok).catch(()=>false);
-        const files = exists ? [fullUrl] : getSeq(number);
-        files.forEach((src, i) => {
+        const exists = await fetch(profileUrl, {method:'HEAD'}).then(r => r.ok).catch(()=>false);
+        const files = exists
+            ? [{ src: profileUrl, fallback: fallbackPath ? chrome.runtime.getURL(`${fallbackPath}${number}.mp3`) : null }]
+            : getSeq(number);
+        files.forEach(({ src, fallback }, i) => {
             const t = setTimeout(() => {
                 const a = new Audio(src); a.volume = CONFIG.VOLUME;
                 a.playbackRate = CONFIG.NUMBER_SPEED;
-                currentAudioObjects.push(a); a.play().catch(()=>{});
+                a.onerror = () => {
+                    if (fallback) {
+                        const a2 = new Audio(fallback); a2.volume = CONFIG.VOLUME;
+                        a2.playbackRate = CONFIG.NUMBER_SPEED;
+                        a2.play().catch(()=>{});
+                    }
+                };
+                currentAudioObjects.push(a); a.play().catch(()=>{
+                    if (fallback) {
+                        const a2 = new Audio(fallback); a2.volume = CONFIG.VOLUME;
+                        a2.playbackRate = CONFIG.NUMBER_SPEED;
+                        a2.play().catch(()=>{});
+                    }
+                });
             }, i * CONFIG.OVERLAP_MS);
             activeTimers.push(t);
         });
