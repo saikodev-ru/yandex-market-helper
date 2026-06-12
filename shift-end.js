@@ -3,7 +3,22 @@
     'use strict';
 
     let active = false;
-    const FONT = "'SF Mono','Cascadia Code','Fira Code','Consolas','Menlo','Courier New',monospace";
+    let fontLoaded = false;
+
+    function ensureFont() {
+        if (fontLoaded) return;
+        fontLoaded = true;
+        const style = document.createElement('style');
+        style.textContent = `
+            @font-face {
+                font-family: 'DS-DIGIB';
+                src: url('${chrome.runtime.getURL('fonts/DS-DIGIB.TTF')}') format('truetype');
+                font-weight: normal;
+                font-style: normal;
+            }
+        `;
+        document.head.appendChild(style);
+    }
 
     chrome.runtime.onMessage.addListener((msg) => {
         if (msg.action === 'showShiftEndAnimation' && !active) {
@@ -20,6 +35,7 @@
 
     function showAnimation(targetTime) {
         active = true;
+        ensureFont();
 
         const prev = prevMinute(targetTime);
         const pChars = prev.split('');
@@ -42,11 +58,9 @@
         Object.assign(clock.style, {
             display: 'flex', alignItems: 'center',
             fontSize: 'clamp(72px, 16vw, 170px)',
-            fontWeight: '800', color: '#fff',
-            fontFamily: FONT, lineHeight: '1',
-            letterSpacing: '0.01em',
-            textShadow: '0 0 30px rgba(255,255,255,0.25)',
-            transition: 'text-shadow 1.2s ease',
+            color: '#fff',
+            fontFamily: "'DS-DIGIB', monospace",
+            lineHeight: '1', letterSpacing: '0.04em',
         });
         overlay.appendChild(clock);
 
@@ -58,8 +72,10 @@
                 const colon = document.createElement('div');
                 colon.textContent = ':';
                 Object.assign(colon.style, {
-                    width: '0.35em', textAlign: 'center',
-                    lineHeight: '1.15', opacity: '0.5',
+                    width: '0.4em', textAlign: 'center',
+                    lineHeight: '1.15', opacity: '0.6',
+                    fontFamily: "'DS-DIGIB', monospace",
+                    fontSize: 'inherit',
                 });
                 clock.appendChild(colon);
                 continue;
@@ -83,24 +99,21 @@
                     : 'none',
             });
 
-            const spanOld = document.createElement('span');
-            Object.assign(spanOld.style, {
-                display: 'block', height: '1.15em',
-                lineHeight: '1.15em', textAlign: 'center',
-                userSelect: 'none',
-            });
-            spanOld.textContent = pChars[i];
+            const makeSpan = (char) => {
+                const s = document.createElement('span');
+                Object.assign(s.style, {
+                    display: 'block', height: '1.15em',
+                    lineHeight: '1.15em', textAlign: 'center',
+                    userSelect: 'none',
+                    fontFamily: "'DS-DIGIB', monospace",
+                    fontSize: 'inherit',
+                });
+                s.textContent = char;
+                return s;
+            };
 
-            const spanNew = document.createElement('span');
-            Object.assign(spanNew.style, {
-                display: 'block', height: '1.15em',
-                lineHeight: '1.15em', textAlign: 'center',
-                userSelect: 'none',
-            });
-            spanNew.textContent = tChars[i];
-
-            track.appendChild(spanOld);
-            track.appendChild(spanNew);
+            track.appendChild(makeSpan(pChars[i]));
+            track.appendChild(makeSpan(tChars[i]));
             slot.appendChild(track);
             clock.appendChild(slot);
 
@@ -110,7 +123,6 @@
         // ── Таймлайн ──
         // 0ms     — fade in black
         // 1200ms  — flip changed digits + play sound
-        // 2200ms  — glow intensifies
         // 5000ms  — fade out
         // 6200ms  — remove
 
@@ -120,11 +132,6 @@
             audio.volume = 1.0;
             audio.play().catch(() => {});
         }, 1200);
-
-        setTimeout(() => {
-            clock.style.textShadow =
-                '0 0 50px rgba(255,255,255,0.45), 0 0 100px rgba(255,255,255,0.2), 0 0 160px rgba(255,255,255,0.08)';
-        }, 2200);
 
         setTimeout(() => {
             overlay.style.transition = 'opacity 1.2s ease';

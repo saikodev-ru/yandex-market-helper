@@ -108,6 +108,7 @@
         "sounds/num/*.mp3",
         "sounds/other/*.mp3",
         "sounds/*.mp3",
+        "fonts/*.TTF",
         "redesign.css",
         "ship-redesign.css"
       ],
