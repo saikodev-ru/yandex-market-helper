@@ -200,7 +200,7 @@
                     if (ke.key === 'Escape' || ke.key === 'Enter') {
                         // Восстанавливаем инпуты
                         allInputs.forEach(inp => {
-                            inp.readOnly = inp.hasAttribute('data-mh-readonly');
+                            inp.readOnly = inp.getAttribute('data-mh-readonly') === 'true';
                             inp.removeAttribute('data-mh-readonly');
                             inp.style.pointerEvents = '';
                             inp.style.backgroundColor = '';
@@ -215,7 +215,7 @@
                             const val = currentInput;
                             // Восстанавливаем инпуты
                             allInputs.forEach(inp => {
-                                inp.readOnly = inp.hasAttribute('data-mh-readonly');
+                                inp.readOnly = inp.getAttribute('data-mh-readonly') === 'true';
                                 inp.removeAttribute('data-mh-readonly');
                                 inp.style.pointerEvents = '';
                                 inp.style.backgroundColor = '';
