@@ -3,26 +3,24 @@
     'use strict';
 
     let active = false;
-    let fontLoaded = false;
+    let fontPromise = null;
 
-    function ensureFont() {
-        if (fontLoaded) return;
-        fontLoaded = true;
-        const style = document.createElement('style');
-        style.textContent = `
-            @font-face {
-                font-family: 'DS-DIGIB';
-                src: url('${chrome.runtime.getURL('fonts/DS-DIGIB.TTF')}') format('truetype');
-                font-weight: normal;
-                font-style: normal;
-            }
-        `;
-        document.head.appendChild(style);
+    function loadFont() {
+        if (!fontPromise) {
+            const url = chrome.runtime.getURL('fonts/DS-DIGIB.TTF');
+            const face = new FontFace('DS-DIGIB', `url(${url})`, {
+                style: 'normal', weight: 'normal',
+            });
+            fontPromise = face.load().then(f => {
+                document.fonts.add(f);
+            }).catch(() => {});
+        }
+        return fontPromise;
     }
 
     chrome.runtime.onMessage.addListener((msg) => {
         if (msg.action === 'showShiftEndAnimation' && !active) {
-            showAnimation(msg.time || '21:00');
+            loadFont().then(() => showAnimation(msg.time || '21:00'));
         }
     });
 
@@ -35,7 +33,6 @@
 
     function showAnimation(targetTime) {
         active = true;
-        ensureFont();
 
         const prev = prevMinute(targetTime);
         const pChars = prev.split('');
