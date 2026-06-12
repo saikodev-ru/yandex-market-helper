@@ -1,3 +1,6 @@
+# Chrome system directories
+_metadata/
+
 # OS files
 .DS_Store
 Thumbs.db
