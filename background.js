@@ -81,3 +81,27 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'sync' || !('renumEnabled' in changes)) return;
   applyPvzRules(changes.renumEnabled.newValue);
 });
+
+
+// ============================================================
+// Перехват заблокированных звуков (ERR_BLOCKED_BY_CLIENT)
+// Если Яндекс пытается воспроизвести N.mp3 и он блокируется
+// (нашим расширением или внешним блокировщиком) — подменяем
+// своим звуком из sounds/num/N.mp3
+// ============================================================
+
+chrome.webRequest.onErrorOccurred.addListener(
+  (details) => {
+    if (details.type !== 'media') return;
+    const match = details.url.match(/\/(\d{1,3})\.mp3(?:\?|$)/i);
+    if (!match || details.tabId === -1) return;
+    const number = parseInt(match[1], 10);
+    if (isNaN(number) || number < 1) return;
+
+    chrome.tabs.sendMessage(details.tabId, {
+      action: 'playBlockedNumber',
+      number
+    }).catch(() => {});
+  },
+  { urls: ['<all_urls>'] }
+);

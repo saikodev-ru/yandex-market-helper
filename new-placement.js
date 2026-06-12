@@ -224,5 +224,14 @@
         }
     }, false);
 
+    // =========================
+    // BLOCKED SOUND INTERCEPT
+    // =========================
+    chrome.runtime.onMessage.addListener((msg) => {
+        if (msg.action === 'playBlockedNumber') {
+            speakWithMp3(msg.number);
+        }
+    });
+
     initObserver();
 })();
