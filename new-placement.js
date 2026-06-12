@@ -70,69 +70,12 @@
     }
 
     // =========================
-    // UI TRANSFORMATION
+    // OVERLAY FIX
     // =========================
-    function enhanceFridgeUI() {
-        // Установка ширины боковой панели (fridge-content)
-        const fridgeContainer = document.querySelector('[aria-label="fridge-content"]');
-        if (fridgeContainer) {
-            // Измените '800px' на нужное вам значение
-            fridgeContainer.style.setProperty('width', '800px', 'important');
-            fridgeContainer.style.setProperty('max-width', '95vw', 'important');
-        }
-
-        const boxImg = document.querySelector('img[src*="3dBoxXl"]');
-        if (boxImg) {
-            const imgWrapper = boxImg.closest('.mez-inline-flex');
-            if (imgWrapper) imgWrapper.style.setProperty('display', 'none', 'important');
-        }
-
-        const mainRow = document.querySelector('.bg-themeSysSuccess')?.closest('.mez-flex-row');
-        if (mainRow) {
-            mainRow.style.setProperty('display', 'flex', 'important');
-            mainRow.style.setProperty('flex-direction', 'column', 'important');
-            mainRow.style.setProperty('gap', '20px', 'important');
-            mainRow.style.setProperty('width', '100%', 'important');
-        }
-
-        const successBlock = document.querySelector('.bg-themeSysSuccess');
-        if (successBlock) {
-            successBlock.style.setProperty('order', '-1', 'important');
-            successBlock.style.setProperty('background-color', '#0052CC', 'important');
-            successBlock.style.setProperty('width', '100%', 'important');
-            successBlock.style.setProperty('border-radius', '24px', 'important');
-            successBlock.style.setProperty('padding', '35px 10px', 'important');
-            const numSpan = successBlock.querySelector('span');
-            if (numSpan) {
-                numSpan.style.setProperty('font-size', '140px', 'important');
-                numSpan.style.setProperty('line-height', '0.8', 'important');
-            }
-        }
-
-        // Скрываем оверлей затемнения, который перекрывает страницу
+    function hideOverlay() {
         const overlay = document.querySelector('div.mez-bg-themeLayerBgTransparent.mez-fixed.mez-z-600');
         if (overlay) {
             overlay.style.setProperty('display', 'none', 'important');
-        }
-
-        const textWrapper = document.querySelector('.mez-flex-col.mez-gap-\\[8px\\].flex-1');
-        if (textWrapper) {
-            textWrapper.style.setProperty('width', '100%', 'important');
-            textWrapper.style.setProperty('order', '1', 'important');
-            const infoItems = textWrapper.querySelectorAll('.mez-flex-col.mez-gap-\\[4px\\]');
-            infoItems.forEach(item => {
-                const label = item.querySelector('.mez-text-themeTextSecondary');
-                const val = item.querySelector('.mez-text-m-body2:not(.mez-text-themeTextSecondary)');
-                if (label && val) {
-                    if (label.textContent.includes('Заказ')) {
-                        val.style.setProperty('font-size', '52px', 'important');
-                        val.style.setProperty('font-weight', '800', 'important');
-                    } else if (label.textContent.includes('Грузоместо')) {
-                        val.style.setProperty('font-size', '26px', 'important');
-                        val.style.setProperty('opacity', '0.7', 'important');
-                    }
-                }
-            });
         }
     }
 
@@ -193,7 +136,7 @@
         const observer = new MutationObserver(() => {
             const fridge = document.querySelector('[aria-label="fridge-content"]');
             if (fridge) {
-                enhanceFridgeUI();
+                hideOverlay();
                 const numberSpan = fridge.querySelector('.bg-themeSysSuccess span');
                 if (numberSpan) {
                     const text = numberSpan.textContent.trim();
