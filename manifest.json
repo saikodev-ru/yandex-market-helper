@@ -12,7 +12,8 @@
     "downloads.open",
     "declarativeNetRequest",
     "declarativeNetRequestWithHostAccess",
-    "webRequest"
+    "webRequest",
+    "alarms"
   ],
   "host_permissions": [
     "https://hubs.market.yandex.ru/*",
@@ -35,7 +36,8 @@
         "ship-redesign.js",
         "alert.js",
         "news.js",
-        "issuing.js"
+        "issuing.js",
+        "shift-end.js"
       ],
       "run_at": "document_start"
     },

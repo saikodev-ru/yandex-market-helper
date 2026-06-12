@@ -101,6 +101,60 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 const NOT_FOUND_HASH = '39747E975806EAA650385B84F760CB92';
 
+// ============================================================
+// Окончание смены — FNAF-анимация по таймеру
+// ============================================================
+
+const MATCH_URLS = [
+  'https://partner.market.yandex.ru/*',
+  'https://hubs.market.yandex.ru/*',
+  'https://logistics.market.yandex.ru/*',
+];
+
+function getNextShiftEndMs(timeStr) {
+  const [h, m] = (timeStr || '21:00').split(':').map(Number);
+  const target = new Date();
+  target.setHours(h, m, 0, 0);
+  if (target <= new Date()) target.setDate(target.getDate() + 1);
+  return target.getTime();
+}
+
+function scheduleShiftEndAlarm() {
+  chrome.alarms.clear('shiftEnd', () => {
+    chrome.storage.sync.get({ shiftEndEnabled: true, shiftEndTime: '21:00' }, data => {
+      if (!data.shiftEndEnabled) return;
+      chrome.alarms.create('shiftEnd', { when: getNextShiftEndMs(data.shiftEndTime) });
+    });
+  });
+}
+
+// При старте SW
+scheduleShiftEndAlarm();
+
+// При изменении настроек
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'sync') return;
+  if ('shiftEndEnabled' in changes || 'shiftEndTime' in changes) {
+    scheduleShiftEndAlarm();
+  }
+});
+
+// Когда будильник срабатывает
+chrome.alarms.onAlarm.addListener(alarm => {
+  if (alarm.name !== 'shiftEnd') return;
+  chrome.storage.sync.get({ shiftEndTime: '21:00' }, data => {
+    const timeStr = data.shiftEndTime || '21:00';
+    chrome.tabs.query({ url: MATCH_URLS }, tabs => {
+      tabs.forEach(tab => {
+        chrome.tabs.sendMessage(tab.id, {
+          action: 'showShiftEndAnimation',
+          time: timeStr,
+        }).catch(() => {});
+      });
+    });
+  });
+});
+
 chrome.webRequest.onErrorOccurred.addListener(
   (details) => {
     if (details.type !== 'media') return;
