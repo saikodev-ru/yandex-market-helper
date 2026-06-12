@@ -16,6 +16,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
     });
   }
+
+  // Alt+T из content script → перенаправляем обратно как showShiftEndAnimation
+  if (request.action === 'testShiftEnd' && sender.tab) {
+    chrome.tabs.sendMessage(sender.tab.id, {
+      action: 'showShiftEndAnimation',
+      time: request.time || '21:00',
+    }).catch(() => {});
+  }
 });
 
 // background.js

@@ -354,6 +354,15 @@ let rAltPressed = false;
 let ePressed    = false;
 
 function handleHotkeys(e) {
+  // Alt+T — тест анимации окончания смены
+  if (e.altKey && e.code === 'KeyT') {
+    e.preventDefault(); e.stopPropagation();
+    chrome.storage.sync.get({ shiftEndTime: '21:00' }, data => {
+      chrome.runtime.sendMessage({ action: 'testShiftEnd', time: data.shiftEndTime || '21:00' });
+    });
+    return;
+  }
+
   if (e.code === 'AltRight') { rAltPressed = true; return; }
 
   if (rAltPressed && e.code === 'KeyY') {
