@@ -4,7 +4,7 @@
 
     const CONFIG = {
         MP3_PATH: 'sounds/num/',
-        SUCCESS_SOUND: 'sounds/success-ship.mp3',
+        SUCCESS_SOUND: 'sounds/placement_complete.mp3',
         NUMBER_SPEED: 1.2,
         VOLUME: 1.0,
         OVERLAP_MS: 500,
