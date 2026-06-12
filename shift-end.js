@@ -95,7 +95,7 @@
                 display: 'flex', flexDirection: 'column',
                 willChange: 'transform',
                 transition: changed
-                    ? 'transform 0.9s cubic-bezier(0.23, 1, 0.32, 1)'
+                    ? 'transform 3.9s cubic-bezier(0.23, 1, 0.32, 1)'
                     : 'none',
             });
 
@@ -121,22 +121,29 @@
         }
 
         // ── Таймлайн ──
-        // 0ms     — fade in black
-        // 1200ms  — flip changed digits + play sound
-        // 5000ms  — fade out
-        // 6200ms  — remove
+        // 0ms     — fade in black (0.9s)
+        // 900ms   — fade in complete
+        // 2900ms  — 2s pause ends → flip changed digits + play sound (3.9s)
+        // 6800ms  — flip complete → 2s pause starts
+        // 8800ms  — 2s pause ends → fade out (1.2s)
+        // 10000ms — fade out complete
+        // 10200ms — remove
+
+        const FLIP_START = 2900;
+        const FADE_OUT_START = 8800;
+        const CLEANUP = 10200;
 
         setTimeout(() => {
             digitSlots.forEach(t => t.style.transform = 'translateY(-50%)');
             const audio = new Audio(chrome.runtime.getURL('sounds/6am.mp3'));
             audio.volume = 1.0;
             audio.play().catch(() => {});
-        }, 1200);
+        }, FLIP_START);
 
         setTimeout(() => {
             overlay.style.transition = 'opacity 1.2s ease';
             overlay.style.opacity = '0';
-        }, 5000);
+        }, FADE_OUT_START);
 
         let dismissed = false;
         function dismiss() {
@@ -148,7 +155,7 @@
             overlay.removeEventListener('click', dismiss);
             document.removeEventListener('keydown', dismiss);
         }
-        setTimeout(() => { if (!dismissed) { overlay.remove(); active = false; } }, 6200);
+        setTimeout(() => { if (!dismissed) { overlay.remove(); active = false; } }, CLEANUP);
         overlay.addEventListener('click', dismiss);
         document.addEventListener('keydown', dismiss);
     }
