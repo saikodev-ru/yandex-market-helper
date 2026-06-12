@@ -17,10 +17,15 @@ const SETTINGS = [
   { id: 'toggleShiftEnd',          key: 'shiftEndEnabled',          def: true  },
 ];
 
-document.addEventListener('DOMContentLoaded', () => {
-  const storageKeys = [...SETTINGS.map(s => s.key), 'theme', 'shiftEndTime'];
+// Parent toggle → dependent sub-element
+const DEPENDENTS = {
+  toggleShiftEnd: 'shiftEndSub',
+};
 
-  // Загрузка состояний
+document.addEventListener('DOMContentLoaded', () => {
+  const storageKeys = [...SETTINGS.map(s => s.key), 'theme', 'shiftEndTime', 'hiddenNewsBlocks'];
+
+  // ── Load states ──
   chrome.storage.sync.get(storageKeys, (data) => {
     SETTINGS.forEach(({ id, key, def }) => {
       const cb = document.getElementById(id);
@@ -28,27 +33,34 @@ document.addEventListener('DOMContentLoaded', () => {
       cb.checked = data[key] !== undefined ? data[key] : def;
     });
 
-    // Тема
     document.documentElement.setAttribute('data-theme', data.theme || 'dark');
 
-    // Время окончания смены
     initHourPicker(data.shiftEndTime || '21:00');
-
-    // Видимость строки времени
-    updateShiftEndRow();
+    updateDependents();
+    updateRestoreRow(data);
   });
 
-  // Тогглы → storage
+  // ── Toggles → storage ──
   SETTINGS.forEach(({ id, key }) => {
     const cb = document.getElementById(id);
     if (!cb) return;
     cb.addEventListener('change', () => {
       chrome.storage.sync.set({ [key]: cb.checked });
-      if (key === 'shiftEndEnabled') updateShiftEndRow();
+      updateDependents();
     });
   });
 
-  // Кнопка «Тест»
+  // ── Tabs ──
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('panel-' + tab.dataset.tab)?.classList.add('active');
+    });
+  });
+
+  // ── Test button ──
   const testBtn = document.getElementById('testShiftEnd');
   if (testBtn) {
     testBtn.addEventListener('click', () => {
@@ -63,7 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Смена темы
+  // ── Theme ──
   const themeBtn = document.getElementById('themeBtn');
   if (themeBtn) {
     themeBtn.addEventListener('click', () => {
@@ -74,28 +86,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Восстановление скрытых новостей
-  const restoreRow = document.getElementById('restoreNewsRow');
-  const restoreTitle = document.getElementById('restoreNewsTitle');
+  // ── Restore hidden news ──
   const restoreBtn = document.getElementById('restoreNewsBtn');
-
-  function updateRestoreRow() {
-    chrome.storage.sync.get({ hiddenNewsBlocks: [] }, data => {
-      const count = (data.hiddenNewsBlocks || []).length;
-      if (count > 0 && restoreRow && restoreTitle) {
-        restoreRow.style.display = '';
-        restoreTitle.textContent = `Скрыто: ${count}`;
-      } else if (restoreRow) {
-        restoreRow.style.display = 'none';
-      }
-    });
-  }
-  updateRestoreRow();
-
   if (restoreBtn) {
     restoreBtn.addEventListener('click', () => {
       chrome.storage.sync.set({ hiddenNewsBlocks: [] }, () => {
-        updateRestoreRow();
+        chrome.storage.sync.get({ hiddenNewsBlocks: [] }, updateRestoreRow);
         chrome.tabs.query({ url: ['*://hubs.market.yandex.ru/*', '*://logistics.market.yandex.ru/*'] }, tabs => {
           tabs.forEach(tab => {
             chrome.tabs.sendMessage(tab.id, { action: 'mh-restore-news' }).catch(() => {});
@@ -106,12 +102,34 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-function updateShiftEndRow() {
-  const row = document.getElementById('shiftEndTimeRow');
-  const cb = document.getElementById('toggleShiftEnd');
-  if (row && cb) row.style.display = cb.checked ? '' : 'none';
+// ── Dependent sub-elements ──
+function updateDependents() {
+  Object.entries(DEPENDENTS).forEach(([toggleId, subId]) => {
+    const cb = document.getElementById(toggleId);
+    const sub = document.getElementById(subId);
+    if (!cb || !sub) return;
+    sub.classList.toggle('disabled', !cb.checked);
+  });
 }
 
+// ── Restore news row ──
+function updateRestoreRow(data) {
+  const row = document.getElementById('restoreNewsRow');
+  const title = document.getElementById('restoreNewsTitle');
+  if (!data) {
+    chrome.storage.sync.get({ hiddenNewsBlocks: [] }, updateRestoreRow);
+    return;
+  }
+  const count = (data.hiddenNewsBlocks || []).length;
+  if (count > 0 && row && title) {
+    row.style.display = '';
+    title.textContent = 'Скрыто: ' + count;
+  } else if (row) {
+    row.style.display = 'none';
+  }
+}
+
+// ── Hour picker ──
 function initHourPicker(selectedTime) {
   const row = document.getElementById('hourRow');
   if (!row) return;

@@ -7,7 +7,8 @@
   :root {
     --accent: #ff3b30;
     --accent-glow: rgba(255,59,48,0.18);
-    --radius: 14px;
+    --radius: 12px;
+    --disabled-opacity: 0.35;
   }
 
   [data-theme="dark"] {
@@ -22,7 +23,9 @@
     --tog-off-b: rgba(255,255,255,0.05);
     --input-bg: rgba(255,255,255,0.06);
     --input-border: rgba(255,255,255,0.10);
-    --hdr-bg: rgba(12,12,20,0.88);
+    --hdr-bg: rgba(12,12,20,0.92);
+    --tab-bg: rgba(255,255,255,0.04);
+    --tab-active-bg: rgba(255,255,255,0.08);
   }
   [data-theme="light"] {
     --bg: #f2f2f7;
@@ -36,13 +39,15 @@
     --tog-off-b: rgba(0,0,0,0.05);
     --input-bg: rgba(0,0,0,0.04);
     --input-border: rgba(0,0,0,0.10);
-    --hdr-bg: rgba(242,242,247,0.88);
+    --hdr-bg: rgba(242,242,247,0.92);
+    --tab-bg: rgba(0,0,0,0.03);
+    --tab-active-bg: rgba(0,0,0,0.07);
   }
 
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 
   body {
-    width: 352px;
+    width: 480px;
     background: var(--bg);
     color: var(--text);
     font-family: -apple-system,'SF Pro Text','Helvetica Neue','Segoe UI',sans-serif;
@@ -51,37 +56,34 @@
     transition: background .3s, color .3s;
   }
 
-  .app { display:flex; flex-direction:column; height:560px; }
-
   /* ── Header ── */
   .hdr {
-    padding: 13px 16px;
+    padding: 11px 16px;
     display: flex; align-items: center; gap: 11px;
     background: var(--hdr-bg);
     backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
     border-bottom: 1px solid var(--border);
-    position: sticky; top: 0; z-index: 10;
     transition: background .3s, border-color .3s;
   }
   .logo {
-    width: 34px; height: 34px; border-radius: 9px;
+    width: 32px; height: 32px; border-radius: 8px;
     background: linear-gradient(145deg,#ff3b30,#ff6b5a);
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
     box-shadow: 0 2px 8px rgba(255,59,48,0.25);
     overflow: hidden;
   }
-  .logo img { width: 22px; height: 22px; }
-  .logo-fb { font-size: 17px; font-weight: 800; color: #fff; display: none; }
+  .logo img { width: 20px; height: 20px; }
+  .logo-fb { font-size: 16px; font-weight: 800; color: #fff; display: none; }
   .hdr-info { flex: 1; min-width: 0; }
-  .hdr-info h1 { font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
+  .hdr-info h1 { font-size: 14px; font-weight: 700; letter-spacing: -0.02em; }
   .ver {
-    font-size: 10px; font-weight: 600; color: var(--text3);
-    background: var(--tog-off); padding: 1px 6px; border-radius: 4px; margin-left: 5px;
+    font-size: 9px; font-weight: 600; color: var(--text3);
+    background: var(--tog-off); padding: 1px 5px; border-radius: 4px; margin-left: 5px;
     vertical-align: middle;
   }
   .tbtn {
-    width: 30px; height: 30px; border-radius: 8px;
+    width: 28px; height: 28px; border-radius: 7px;
     display: flex; align-items: center; justify-content: center;
     background: var(--tog-off); border: 1px solid var(--tog-off-b);
     cursor: pointer; flex-shrink: 0;
@@ -89,76 +91,98 @@
   }
   .tbtn:hover { background: var(--card-hover); }
   .tbtn:active { transform: scale(.9); }
-  .tbtn svg { width: 14px; height: 14px; stroke: var(--text); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .tbtn svg { width: 13px; height: 13px; stroke: var(--text); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .i-sun { display: none; } .i-moon { display: block; }
   [data-theme="light"] .i-sun { display: block; }
   [data-theme="light"] .i-moon { display: none; }
 
-  /* ── Main ── */
-  .mn {
-    flex: 1; min-height: 0; padding: 6px 10px 10px;
-    display: flex; flex-direction: column; gap: 2px;
-    overflow-y: auto;
+  /* ── Tabs ── */
+  .tabs {
+    display: flex; gap: 2px; padding: 6px 10px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    transition: background .3s, border-color .3s;
+  }
+  .tab {
+    flex: 1; padding: 7px 0; border-radius: 8px;
+    background: var(--tab-bg); border: none;
+    color: var(--text3); font-size: 11.5px; font-weight: 600;
+    cursor: pointer; transition: all .2s;
+    font-family: inherit; text-align: center;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .tab:hover { color: var(--text2); }
+  .tab:active { transform: scale(.96); }
+  .tab.active {
+    background: var(--tab-active-bg); color: var(--text);
   }
 
-  .sec { font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text3); padding: 10px 8px 3px; }
+  /* ── Content ── */
+  .content { padding: 8px 10px; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
 
   .card {
     background: var(--card); border-radius: var(--radius);
     border: 1px solid var(--border); overflow: hidden;
     transition: background .3s, border-color .3s;
+    margin-bottom: 6px;
   }
 
   /* ── Row ── */
   .row {
     display: flex; align-items: center; gap: 10px;
-    padding: 9px 13px; transition: background .12s;
+    padding: 8px 12px; transition: background .12s;
   }
   .row+.row { border-top: 1px solid var(--border); }
   .row:active { background: var(--card-hover); }
 
   .ri {
-    width: 28px; height: 28px; border-radius: 7px;
+    width: 26px; height: 26px; border-radius: 6px;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
   }
-  .ri svg { width: 15px; height: 15px; stroke: #fff; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .ri svg { width: 14px; height: 14px; stroke: #fff; fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 
   .rb { flex: 1; min-width: 0; }
-  .rn { font-size: 13px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .rd { font-size: 11px; color: var(--text2); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rn { font-size: 12.5px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rd { font-size: 10.5px; color: var(--text2); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* ── Toggle ── */
-  .tog { position: relative; flex-shrink: 0; width: 44px; height: 26px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .tog { position: relative; flex-shrink: 0; width: 40px; height: 24px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .tog input { position: absolute; opacity: 0; width: 0; height: 0; }
-  .tt { position: absolute; inset: 0; border-radius: 13px; background: var(--tog-off); border: 1px solid var(--tog-off-b); transition: background .25s cubic-bezier(.4,0,.2,1), box-shadow .25s; }
-  .th { position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .25s cubic-bezier(.4,0,.2,1); }
+  .tt { position: absolute; inset: 0; border-radius: 12px; background: var(--tog-off); border: 1px solid var(--tog-off-b); transition: background .25s cubic-bezier(.4,0,.2,1), box-shadow .25s; }
+  .th { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .25s cubic-bezier(.4,0,.2,1); }
   .tog input:checked ~ .tt { background: var(--accent); border-color: transparent; box-shadow: 0 0 0 3px var(--accent-glow); }
-  .tog input:checked ~ .th { transform: translateX(18px); }
+  .tog input:checked ~ .th { transform: translateX(16px); }
 
-  /* ── Time row ── */
-  .tmr {
-    display: flex; align-items: center; gap: 10px;
-    padding: 10px 13px 14px;
+  /* ── Sub-row (dependent on parent toggle) ── */
+  .sub {
+    padding: 8px 12px 12px;
+    border-top: 1px solid var(--border);
+    transition: opacity .25s;
   }
+  .sub.disabled {
+    opacity: var(--disabled-opacity);
+    pointer-events: none;
+  }
+
+  /* ── Hour picker ── */
   .tw {
-    flex: 1; display: flex; flex-direction: column; gap: 8px;
+    display: flex; flex-direction: column; gap: 7px;
     background: var(--input-bg); border: 1px solid var(--input-border);
-    border-radius: 10px; padding: 10px 12px;
+    border-radius: 8px; padding: 8px 10px;
     transition: border-color .2s;
   }
-  .tw:focus-within { border-color: var(--accent); }
   .tw-label {
-    font-size: 11px; color: var(--text3); font-weight: 500;
+    font-size: 10px; color: var(--text3); font-weight: 500;
     line-height: 1; white-space: nowrap;
   }
-  .hour-row {
-    display: flex; gap: 5px;
-  }
+  .hour-row { display: flex; gap: 4px; }
   .hpill {
-    flex: 1; height: 34px; border-radius: 8px;
-    background: var(--tog-off); border: 1.5px solid transparent;
-    color: var(--text2); font-size: 14px; font-weight: 700;
+    flex: 1; height: 30px; border-radius: 7px;
+    background: var(--tog-off); border: none;
+    color: var(--text2); font-size: 13px; font-weight: 700;
     font-family: 'SF Mono','Cascadia Code','Consolas','Menlo',monospace;
     cursor: pointer; transition: all .2s cubic-bezier(.4,0,.2,1);
     display: flex; align-items: center; justify-content: center;
@@ -167,23 +191,23 @@
   .hpill:hover { background: var(--card-hover); color: var(--text); }
   .hpill:active { transform: scale(.93); }
   .hpill.active {
-    background: var(--accent); color: #fff; border-color: transparent;
+    background: var(--accent); color: #fff;
     box-shadow: 0 0 0 3px var(--accent-glow);
   }
   .tst {
-    padding: 10px 14px; font-size: 12px; font-weight: 600;
-    background: var(--accent); color: #fff; border: none; border-radius: 10px;
+    padding: 8px 12px; font-size: 11px; font-weight: 600;
+    background: var(--accent); color: #fff; border: none; border-radius: 8px;
     cursor: pointer; font-family: inherit; transition: opacity .2s, transform .1s;
-    white-space: nowrap; flex-shrink: 0;
-    display: flex; align-items: center; gap: 5px;
+    white-space: nowrap; flex-shrink: 0; margin-top: 7px;
+    display: inline-flex; align-items: center; gap: 5px;
   }
-  .tst svg { width: 14px; height: 14px; stroke: #fff; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+  .tst svg { width: 12px; height: 12px; stroke: #fff; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
   .tst:hover { opacity: .85; }
   .tst:active { transform: scale(.94); }
 
-  /* ── Action button row ── */
+  /* ── Action button ── */
   .abtn {
-    width: auto; padding: 4px 11px; font-size: 11px; font-weight: 600;
+    width: auto; padding: 4px 10px; font-size: 10.5px; font-weight: 600;
     background: var(--accent); color: #fff; border: none; border-radius: 6px;
     cursor: pointer; font-family: inherit; transition: opacity .2s, transform .1s;
     white-space: nowrap; flex-shrink: 0;
@@ -193,9 +217,9 @@
 
   /* ── Footer ── */
   .ft {
-    padding: 9px 16px 13px;
+    padding: 8px 16px 10px;
     display: flex; justify-content: center; gap: 14px;
-    font-size: 11px; color: var(--text3);
+    font-size: 10.5px; color: var(--text3);
     border-top: 1px solid var(--border);
     transition: color .3s, border-color .3s;
   }
@@ -218,15 +242,15 @@
 </style>
 </head>
 <body>
-<div class="app">
 
+  <!-- Header -->
   <div class="hdr">
     <div class="logo">
       <img src="icons/icon48.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
       <span class="logo-fb">M</span>
     </div>
     <div class="hdr-info">
-      <h1>M.Helper <span class="ver">v2.4</span></h1>
+      <h1>M.Helper <span class="ver">v2.5</span></h1>
     </div>
     <button class="tbtn" id="themeBtn" title="Сменить тему">
       <svg class="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -234,136 +258,146 @@
     </button>
   </div>
 
-  <div class="mn">
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" data-tab="interface">Интерфейс</button>
+    <button class="tab" data-tab="acceptance">Приёмка</button>
+    <button class="tab" data-tab="sounds">Звуки</button>
+    <button class="tab" data-tab="settings">Настройки</button>
+  </div>
 
-    <!-- Интерфейс -->
-    <div class="sec">Интерфейс</div>
-    <div class="card">
-      <div class="row">
-        <div class="ri ic-purple"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" rx="3"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="2" y1="9" x2="9" y2="9"/></svg></div>
-        <div class="rb"><div class="rn">Редизайн интерфейса</div></div>
-        <label class="tog"><input type="checkbox" id="toggleRedesign"><span class="tt"><span class="th"></span></span></label>
-      </div>
-      <div class="row">
-        <div class="ri ic-orange"><svg viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 4v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div>
-        <div class="rb"><div class="rn">Редизайн отгрузки</div></div>
-        <label class="tog"><input type="checkbox" id="toggleShipRedesign"><span class="tt"><span class="th"></span></span></label>
-      </div>
-      <div class="row">
-        <div class="ri ic-teal"><svg viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5"/><line x1="12" y1="13" x2="12" y2="21"/></svg></div>
-        <div class="rb"><div class="rn">Компактный хинт</div></div>
-        <label class="tog"><input type="checkbox" id="toggleCompactHint"><span class="tt"><span class="th"></span></span></label>
-      </div>
-      <div class="row">
-        <div class="ri ic-indigo"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7"/></svg></div>
-        <div class="rb"><div class="rn">Компактные новости</div></div>
-        <label class="tog"><input type="checkbox" id="toggleCompactNews"><span class="tt"><span class="th"></span></span></label>
-      </div>
-      <div class="row" id="restoreNewsRow" style="display:none">
-        <div class="ri ic-amber"><svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg></div>
-        <div class="rb"><div class="rn" id="restoreNewsTitle">Восстановить скрытые</div></div>
-        <button class="abtn" id="restoreNewsBtn">Вернуть</button>
-      </div>
-    </div>
+  <!-- Content -->
+  <div class="content">
 
-    <!-- Приёмка и выдача -->
-    <div class="sec">Приёмка и выдача</div>
-    <div class="card">
-      <div class="row">
-        <div class="ri ic-teal"><svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M8 7v10M12 7v10M17 7v10"/></svg></div>
-        <div class="rb"><div class="rn">Новая приёмка</div></div>
-        <label class="tog"><input type="checkbox" id="toggleNewAcceptance"><span class="tt"><span class="th"></span></span></label>
-      </div>
-      <div class="row">
-        <div class="ri ic-blue"><svg viewBox="0 0 24 24"><line x1="3" y1="5" x2="3" y2="19"/><line x1="7" y1="5" x2="7" y2="19"/><line x1="12" y1="5" x2="12" y2="19"/><line x1="17" y1="5" x2="17" y2="19"/><line x1="21" y1="5" x2="21" y2="19"/></svg></div>
-        <div class="rb"><div class="rn">Кнопки «Нет штрихкода»</div></div>
-        <label class="tog"><input type="checkbox" id="toggleNoBarcode"><span class="tt"><span class="th"></span></span></label>
-      </div>
-      <div class="row">
-        <div class="ri ic-green"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="11" y1="8" x2="11" y2="14"/></svg></div>
-        <div class="rb"><div class="rn">Новая выдача</div></div>
-        <label class="tog"><input type="checkbox" id="toggleNewIssuing"><span class="tt"><span class="th"></span></span></label>
-      </div>
-      <div class="row">
-        <div class="ri ic-cyan"><svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="3"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="12" y1="8" x2="12" y2="16"/></svg></div>
-        <div class="rb"><div class="rn">Озвучка ячеек</div></div>
-        <label class="tog"><input type="checkbox" id="toggleRenum"><span class="tt"><span class="th"></span></span></label>
-      </div>
-      <div class="row">
-        <div class="ri ic-green"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/></svg></div>
-        <div class="rb"><div class="rn">Завершение размещения</div></div>
-        <label class="tog"><input type="checkbox" id="togglePlacementComplete"><span class="tt"><span class="th"></span></span></label>
-      </div>
-    </div>
-
-    <!-- Звуки -->
-    <div class="sec">Звуки</div>
-    <div class="card">
-      <div class="row">
-        <div class="ri ic-red"><svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></div>
-        <div class="rb"><div class="rn">Озвучка правил выдачи</div></div>
-        <label class="tog"><input type="checkbox" id="toggleVoiceAlerts"><span class="tt"><span class="th"></span></span></label>
-      </div>
-      <div class="row">
-        <div class="ri ic-indigo"><svg viewBox="0 0 24 24"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg></div>
-        <div class="rb"><div class="rn">Звук 5-значных кодов</div></div>
-        <label class="tog"><input type="checkbox" id="toggleGoSound"><span class="tt"><span class="th"></span></span></label>
-      </div>
-      <div class="row">
-        <div class="ri ic-pink"><svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg></div>
-        <div class="rb"><div class="rn">Звук «Ввести код»</div></div>
-        <label class="tog"><input type="checkbox" id="toggleEnterCodeSound"><span class="tt"><span class="th"></span></span></label>
-      </div>
-      <div class="row">
-        <div class="ri ic-amber"><svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/><line x1="5" y1="16" x2="9" y2="16"/><line x1="12" y1="16" x2="14" y2="16"/></svg></div>
-        <div class="rb"><div class="rn">Звук успешной оплаты</div></div>
-        <label class="tog"><input type="checkbox" id="toggleOplataSound"><span class="tt"><span class="th"></span></span></label>
-      </div>
-      <div class="row">
-        <div class="ri ic-cyan"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></div>
-        <div class="rb"><div class="rn">Звук «Код принят»</div></div>
-        <label class="tog"><input type="checkbox" id="toggleSuccessShipSound"><span class="tt"><span class="th"></span></span></label>
-      </div>
-    </div>
-
-    <!-- Окончание смены -->
-    <div class="sec">Окончание смены</div>
-    <div class="card">
-      <div class="row">
-        <div class="ri ic-dark"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-        <div class="rb">
-          <div class="rn">Анимация окончания смены</div>
-          <div class="rd">Flip-clock каждый день</div>
+    <!-- Tab 1: Интерфейс -->
+    <div class="tab-panel active" id="panel-interface">
+      <div class="card">
+        <div class="row">
+          <div class="ri ic-purple"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" rx="3"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="2" y1="9" x2="9" y2="9"/></svg></div>
+          <div class="rb"><div class="rn">Редизайн интерфейса</div></div>
+          <label class="tog"><input type="checkbox" id="toggleRedesign"><span class="tt"><span class="th"></span></span></label>
         </div>
-        <label class="tog"><input type="checkbox" id="toggleShiftEnd"><span class="tt"><span class="th"></span></span></label>
-      </div>
-      <div class="tmr" id="shiftEndTimeRow">
-        <div class="tw">
-          <div class="tw-label">каждый день</div>
-          <div class="hour-row" id="hourRow"></div>
+        <div class="row">
+          <div class="ri ic-orange"><svg viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 4v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div>
+          <div class="rb"><div class="rn">Редизайн отгрузки</div></div>
+          <label class="tog"><input type="checkbox" id="toggleShipRedesign"><span class="tt"><span class="th"></span></span></label>
         </div>
-        <button class="tst" id="testShiftEnd"><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>Тест</button>
+        <div class="row">
+          <div class="ri ic-teal"><svg viewBox="0 0 24 24"><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5"/><line x1="12" y1="13" x2="12" y2="21"/></svg></div>
+          <div class="rb"><div class="rn">Компактный хинт</div></div>
+          <label class="tog"><input type="checkbox" id="toggleCompactHint"><span class="tt"><span class="th"></span></span></label>
+        </div>
+        <div class="row">
+          <div class="ri ic-indigo"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7"/></svg></div>
+          <div class="rb"><div class="rn">Компактные новости</div></div>
+          <label class="tog"><input type="checkbox" id="toggleCompactNews"><span class="tt"><span class="th"></span></span></label>
+        </div>
+        <div class="row" id="restoreNewsRow" style="display:none">
+          <div class="ri ic-amber"><svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg></div>
+          <div class="rb"><div class="rn" id="restoreNewsTitle">Восстановить скрытые</div></div>
+          <button class="abtn" id="restoreNewsBtn">Вернуть</button>
+        </div>
       </div>
     </div>
 
-    <!-- Разное -->
-    <div class="sec">Разное</div>
-    <div class="card">
-      <div class="row">
-        <div class="ri ic-slate"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2.5"/><circle cx="6" cy="10" r="1" fill="#fff" stroke="none"/><circle cx="10" cy="10" r="1" fill="#fff" stroke="none"/><circle cx="14" cy="10" r="1" fill="#fff" stroke="none"/><circle cx="18" cy="10" r="1" fill="#fff" stroke="none"/><line x1="7" y1="14" x2="17" y2="14"/></svg></div>
-        <div class="rb"><div class="rn">Горячие клавиши RAlt</div></div>
-        <label class="tog"><input type="checkbox" id="toggleHotkeys"><span class="tt"><span class="th"></span></span></label>
+    <!-- Tab 2: Приёмка -->
+    <div class="tab-panel" id="panel-acceptance">
+      <div class="card">
+        <div class="row">
+          <div class="ri ic-teal"><svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M8 7v10M12 7v10M17 7v10"/></svg></div>
+          <div class="rb"><div class="rn">Новая приёмка</div></div>
+          <label class="tog"><input type="checkbox" id="toggleNewAcceptance"><span class="tt"><span class="th"></span></span></label>
+        </div>
+        <div class="row">
+          <div class="ri ic-blue"><svg viewBox="0 0 24 24"><line x1="3" y1="5" x2="3" y2="19"/><line x1="7" y1="5" x2="7" y2="19"/><line x1="12" y1="5" x2="12" y2="19"/><line x1="17" y1="5" x2="17" y2="19"/><line x1="21" y1="5" x2="21" y2="19"/></svg></div>
+          <div class="rb"><div class="rn">Кнопки «Нет штрихкода»</div></div>
+          <label class="tog"><input type="checkbox" id="toggleNoBarcode"><span class="tt"><span class="th"></span></span></label>
+        </div>
+        <div class="row">
+          <div class="ri ic-green"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="11" y1="8" x2="11" y2="14"/></svg></div>
+          <div class="rb"><div class="rn">Новая выдача</div></div>
+          <label class="tog"><input type="checkbox" id="toggleNewIssuing"><span class="tt"><span class="th"></span></span></label>
+        </div>
+        <div class="row">
+          <div class="ri ic-cyan"><svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="3"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="12" y1="8" x2="12" y2="16"/></svg></div>
+          <div class="rb"><div class="rn">Озвучка ячеек</div></div>
+          <label class="tog"><input type="checkbox" id="toggleRenum"><span class="tt"><span class="th"></span></span></label>
+        </div>
+        <div class="row">
+          <div class="ri ic-green"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-5"/></svg></div>
+          <div class="rb"><div class="rn">Завершение размещения</div></div>
+          <label class="tog"><input type="checkbox" id="togglePlacementComplete"><span class="tt"><span class="th"></span></span></label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 3: Звуки -->
+    <div class="tab-panel" id="panel-sounds">
+      <div class="card">
+        <div class="row">
+          <div class="ri ic-red"><svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></div>
+          <div class="rb"><div class="rn">Озвучка правил выдачи</div></div>
+          <label class="tog"><input type="checkbox" id="toggleVoiceAlerts"><span class="tt"><span class="th"></span></span></label>
+        </div>
+        <div class="row">
+          <div class="ri ic-indigo"><svg viewBox="0 0 24 24"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg></div>
+          <div class="rb"><div class="rn">Звук 5-значных кодов</div></div>
+          <label class="tog"><input type="checkbox" id="toggleGoSound"><span class="tt"><span class="th"></span></span></label>
+        </div>
+        <div class="row">
+          <div class="ri ic-pink"><svg viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg></div>
+          <div class="rb"><div class="rn">Звук «Ввести код»</div></div>
+          <label class="tog"><input type="checkbox" id="toggleEnterCodeSound"><span class="tt"><span class="th"></span></span></label>
+        </div>
+        <div class="row">
+          <div class="ri ic-amber"><svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/><line x1="5" y1="16" x2="9" y2="16"/><line x1="12" y1="16" x2="14" y2="16"/></svg></div>
+          <div class="rb"><div class="rn">Звук успешной оплаты</div></div>
+          <label class="tog"><input type="checkbox" id="toggleOplataSound"><span class="tt"><span class="th"></span></span></label>
+        </div>
+        <div class="row">
+          <div class="ri ic-cyan"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></div>
+          <div class="rb"><div class="rn">Звук «Код принят»</div></div>
+          <label class="tog"><input type="checkbox" id="toggleSuccessShipSound"><span class="tt"><span class="th"></span></span></label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 4: Настройки -->
+    <div class="tab-panel" id="panel-settings">
+      <div class="card">
+        <div class="row">
+          <div class="ri ic-dark"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+          <div class="rb">
+            <div class="rn">Анимация окончания смены</div>
+            <div class="rd">Flip-clock каждый день</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="toggleShiftEnd"><span class="tt"><span class="th"></span></span></label>
+        </div>
+        <div class="sub disabled" id="shiftEndSub">
+          <div class="tw">
+            <div class="tw-label">каждый день</div>
+            <div class="hour-row" id="hourRow"></div>
+          </div>
+          <button class="tst" id="testShiftEnd"><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>Тест</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="row">
+          <div class="ri ic-slate"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2.5"/><circle cx="6" cy="10" r="1" fill="#fff" stroke="none"/><circle cx="10" cy="10" r="1" fill="#fff" stroke="none"/><circle cx="14" cy="10" r="1" fill="#fff" stroke="none"/><circle cx="18" cy="10" r="1" fill="#fff" stroke="none"/><line x1="7" y1="14" x2="17" y2="14"/></svg></div>
+          <div class="rb"><div class="rn">Горячие клавиши RAlt</div></div>
+          <label class="tog"><input type="checkbox" id="toggleHotkeys"><span class="tt"><span class="th"></span></span></label>
+        </div>
       </div>
     </div>
 
   </div>
 
+  <!-- Footer -->
   <div class="ft">
     <a href="https://saiko.dev" target="_blank">saiko.dev</a>
     <a href="https://t.me/ymarket_helper" target="_blank">Telegram</a>
   </div>
 
-</div>
 <script src="popup.js"></script>
 </body>
 </html>
