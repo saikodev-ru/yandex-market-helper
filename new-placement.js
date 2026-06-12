@@ -161,11 +161,7 @@
         const now = Date.now();
 
         if (e.key === 'Enter') {
-            if (checkIsDuplicate(scanBuffer)) {
-                playError8Bit();
-            } else {
-                lastVoicedNumber = null;
-            }
+            lastVoicedNumber = null;
             scanBuffer = "";
         } else if (e.key.length === 1) {
             if (now - lastKeyTime > 150) scanBuffer = "";
