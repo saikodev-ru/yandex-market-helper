@@ -192,34 +192,30 @@
                 playBeepSequence();
                 editBtn.click();
 
+                const restoreInputs = () => {
+                    allInputs.forEach(inp => {
+                        inp.readOnly = inp.getAttribute('data-mh-readonly') === 'true';
+                        inp.removeAttribute('data-mh-readonly');
+                        inp.style.pointerEvents = '';
+                        inp.style.backgroundColor = '';
+                    });
+                };
+
                 const handleCellInput = (ke) => {
                     ke.preventDefault();
                     ke.stopPropagation();
                     ke.stopImmediatePropagation();
 
-                    if (ke.key === 'Escape' || ke.key === 'Enter') {
-                        // Восстанавливаем инпуты
-                        allInputs.forEach(inp => {
-                            inp.readOnly = inp.getAttribute('data-mh-readonly') === 'true';
-                            inp.removeAttribute('data-mh-readonly');
-                            inp.style.pointerEvents = '';
-                            inp.style.backgroundColor = '';
-                        });
+                    if (ke.key === 'Escape') {
+                        restoreInputs();
                         finish();
                         return;
                     }
 
-                    if (ke.key >= '0' && ke.key <= '9') {
-                        currentInput += ke.key;
+                    if (ke.key === 'Enter') {
                         if (currentInput.length === 3) {
                             const val = currentInput;
-                            // Восстанавливаем инпуты
-                            allInputs.forEach(inp => {
-                                inp.readOnly = inp.getAttribute('data-mh-readonly') === 'true';
-                                inp.removeAttribute('data-mh-readonly');
-                                inp.style.pointerEvents = '';
-                                inp.style.backgroundColor = '';
-                            });
+                            restoreInputs();
                             setTimeout(() => {
                                 const target = Array.from(document.querySelectorAll('div[role="button"], button'))
                                                .find(c => c.textContent.trim() === val);
@@ -228,8 +224,15 @@
                                     target.click();
                                 }
                             }, 350);
-                            finish();
+                        } else {
+                            restoreInputs();
                         }
+                        finish();
+                        return;
+                    }
+
+                    if (currentInput.length < 3 && ke.key >= '0' && ke.key <= '9') {
+                        currentInput += ke.key;
                     }
                 };
 
