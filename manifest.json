@@ -1,8 +1,7 @@
 {
   "manifest_version": 3,
   "name": "M.Helper (Маркет.Помощник)",
-  "version": "2.5.0",
-  "version_name": "2.5-beta",
+  "version": "2.4",
   "description": "Добавляет возможности при работе с заказами Маркета",
   "permissions": [
     "storage",
@@ -13,7 +12,6 @@
     "downloads.open",
     "declarativeNetRequest",
     "declarativeNetRequestWithHostAccess",
-    "offscreen",
     "webRequest"
   ],
   "host_permissions": [
@@ -114,14 +112,9 @@
         "img/tooltip/*.jpg",
         "libs/qrcode.min.js",
         "libs/jspdf.umd.min.js",
-        "sounds/alice/num/*.mp3",
-        "sounds/alice/ordertype/*.mp3",
-        "sounds/alice/ship/*.mp3",
-        "sounds/mita/num/*.mp3",
-        "sounds/mita/ordertype/*.mp3",
-        "sounds/mita/ship/*.mp3",
-        "issuing-sound-main.js",
-        "audio-player.html",
+        "sounds/num/*.mp3",
+        "sounds/other/*.mp3",
+        "sounds/*.mp3",
         "redesign.css",
         "ship-redesign.css"
       ],

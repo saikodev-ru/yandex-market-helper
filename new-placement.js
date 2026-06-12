@@ -3,42 +3,14 @@
     'use strict';
 
     const CONFIG = {
-        DEBOUNCE_DELAY: 300,
+        MP3_PATH: 'sounds/num/',
+        SUCCESS_SOUND: 'sounds/success-ship.mp3',
         NUMBER_SPEED: 1.2,
         VOLUME: 1.0,
         OVERLAP_MS: 500,
         RETRY_LIMIT: 20, 
         RETRY_DELAY: 150 
     };
-
-    // Динамические пути на основе voiceProfile
-    // Fallback: если файл профиля не найден — используется alice.
-    let voiceProfile = 'default';
-
-    function getProfile() {
-        return (voiceProfile && voiceProfile !== 'default') ? voiceProfile : 'alice';
-    }
-    function getMp3Path() {
-        return `sounds/${getProfile()}/num/`;
-    }
-    function getFallbackMp3Path() {
-        return getProfile() !== 'alice' ? 'sounds/alice/num/' : null;
-    }
-
-    // Читаем voiceProfile из chrome.storage.sync
-    function initVoiceProfile() {
-        try {
-            chrome.storage.sync.get(['voiceProfile'], ({ voiceProfile: profile }) => {
-                voiceProfile = profile || 'default';
-            });
-            chrome.storage.onChanged.addListener((changes) => {
-                if (changes.voiceProfile) {
-                    voiceProfile = changes.voiceProfile.newValue || 'default';
-                }
-            });
-        } catch (e) {}
-    }
-    initVoiceProfile();
 
     let lastVoicedNumber = null;
     let currentAudioObjects = []; 
@@ -81,7 +53,7 @@
             osc.stop(ctx.currentTime + startTime + 0.08);
         };
         playBeep(0, 550); playBeep(0.1, 550);
-                playBeep(0, 100); playBeep(0.1, 100);
+		playBeep(0, 100); playBeep(0.1, 100);
     }
 
     function playError8Bit() {
@@ -182,56 +154,28 @@
     async function speakWithMp3(number) {
         if (isNaN(number)) return;
         clearAllAudio();
-        const profileUrl = chrome.runtime.getURL(`${getMp3Path()}${number}.mp3`);
-        const fallbackPath = getFallbackMp3Path();
+        const fullUrl = chrome.runtime.getURL(`${CONFIG.MP3_PATH}${number}.mp3`);
         const getSeq = (n) => {
             const s = [];
-            if (n <= 20) s.push({
-                src: chrome.runtime.getURL(`${getMp3Path()}${n}.mp3`),
-                fallback: fallbackPath ? chrome.runtime.getURL(`${fallbackPath}${n}.mp3`) : null
-            });
+            if (n <= 20) s.push(chrome.runtime.getURL(`${CONFIG.MP3_PATH}${n}.mp3`));
             else if (n < 100) {
                 const t = Math.floor(n / 10) * 10, o = n % 10;
-                s.push({
-                    src: chrome.runtime.getURL(`${getMp3Path()}${t}.mp3`),
-                    fallback: fallbackPath ? chrome.runtime.getURL(`${fallbackPath}${t}.mp3`) : null
-                });
-                if (o > 0) s.push({
-                    src: chrome.runtime.getURL(`${getMp3Path()}${o}.mp3`),
-                    fallback: fallbackPath ? chrome.runtime.getURL(`${fallbackPath}${o}.mp3`) : null
-                });
+                s.push(chrome.runtime.getURL(`${CONFIG.MP3_PATH}${t}.mp3`));
+                if (o > 0) s.push(chrome.runtime.getURL(`${CONFIG.MP3_PATH}${o}.mp3`));
             } else if (n < 1000) {
                 const h = Math.floor(n / 100) * 100, r = n % 100;
-                s.push({
-                    src: chrome.runtime.getURL(`${getMp3Path()}${h}.mp3`),
-                    fallback: fallbackPath ? chrome.runtime.getURL(`${fallbackPath}${h}.mp3`) : null
-                });
+                s.push(chrome.runtime.getURL(`${CONFIG.MP3_PATH}${h}.mp3`));
                 if (r > 0) s.push(...getSeq(r));
             }
             return s;
         };
-        const exists = await fetch(profileUrl, {method:'HEAD'}).then(r => r.ok).catch(()=>false);
-        const files = exists
-            ? [{ src: profileUrl, fallback: fallbackPath ? chrome.runtime.getURL(`${fallbackPath}${number}.mp3`) : null }]
-            : getSeq(number);
-        files.forEach(({ src, fallback }, i) => {
+        const exists = await fetch(fullUrl, {method:'HEAD'}).then(r => r.ok).catch(()=>false);
+        const files = exists ? [fullUrl] : getSeq(number);
+        files.forEach((src, i) => {
             const t = setTimeout(() => {
                 const a = new Audio(src); a.volume = CONFIG.VOLUME;
                 a.playbackRate = CONFIG.NUMBER_SPEED;
-                a.onerror = () => {
-                    if (fallback) {
-                        const a2 = new Audio(fallback); a2.volume = CONFIG.VOLUME;
-                        a2.playbackRate = CONFIG.NUMBER_SPEED;
-                        a2.play().catch(()=>{});
-                    }
-                };
-                currentAudioObjects.push(a); a.play().catch(()=>{
-                    if (fallback) {
-                        const a2 = new Audio(fallback); a2.volume = CONFIG.VOLUME;
-                        a2.playbackRate = CONFIG.NUMBER_SPEED;
-                        a2.play().catch(()=>{});
-                    }
-                });
+                currentAudioObjects.push(a); a.play().catch(()=>{});
             }, i * CONFIG.OVERLAP_MS);
             activeTimers.push(t);
         });

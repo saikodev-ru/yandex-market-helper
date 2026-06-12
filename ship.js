@@ -11,9 +11,9 @@
             'Один экземпляр оставьте себе, другой отдайте отправителю'
         ],
         // Паттерны URL
-                HOME_PATTERN: /(?:https?:\/\/[^/]+)?\/tpl-outlet\/\d{8}\/acceptance-request\/?(?:\?.*)?$/,
+		HOME_PATTERN: /(?:https?:\/\/[^/]+)?\/tpl-outlet\/\d{8}\/acceptance-request\/?(?:\?.*)?$/,
 
-                DETAIL_PATTERN: /(?:https?:\/\/[^/]+)?\/tpl-outlet\/\d{8}\/acceptance-request\/\d{8}\/?(?:\?.*)?$/
+		DETAIL_PATTERN: /(?:https?:\/\/[^/]+)?\/tpl-outlet\/\d{8}\/acceptance-request\/\d{8}\/?(?:\?.*)?$/
 
     };
 
@@ -23,28 +23,6 @@
     let isProcessing = false;
     let isInitialized = false;
     const processedPages = new Map();
-
-    // Динамический профиль озвучки
-    // Fallback: если файл профиля не найден — используется alice.
-    let voiceProfile = 'default';
-    try {
-        chrome.storage.sync.get(['voiceProfile'], ({ voiceProfile: profile }) => {
-            voiceProfile = profile || 'default';
-        });
-        chrome.storage.onChanged.addListener((changes) => {
-            if (changes.voiceProfile) {
-                voiceProfile = changes.voiceProfile.newValue || 'default';
-            }
-        });
-    } catch (e) {}
-
-    function getShipProfile() {
-        return (voiceProfile && voiceProfile !== 'default') ? voiceProfile : 'alice';
-    }
-    function getFallbackShipProfile() {
-        const profile = getShipProfile();
-        return profile !== 'alice' ? profile : null;
-    }
 
     // Вспомогательные функции
     const utils = {
@@ -128,37 +106,17 @@
          * Воспроизводит звук уведомления
          */
         playNotificationSound(type) {
-            const profile = getShipProfile();
-            const fallbackProfile = getFallbackShipProfile();
             const soundPath = type === 'avito' 
-                ? `sounds/${profile}/ship/ship-avito.mp3`
-                : `sounds/${profile}/ship/ship-c2c.mp3`;
-            const fallbackPath = fallbackProfile
-                ? (type === 'avito'
-                    ? `sounds/alice/ship/ship-avito.mp3`
-                    : `sounds/alice/ship/ship-c2c.mp3`)
-                : null;
-
-            const audio = new Audio(chrome.runtime.getURL(soundPath));
+                ? chrome.runtime.getURL('sounds/other/ship-avito.mp3')
+                : chrome.runtime.getURL('sounds/other/ship-c2c.mp3');
+            
+            const audio = new Audio(soundPath);
             audio.volume = 0.7;
-
-            const tryFallback = () => {
-                if (fallbackPath) {
-                    const a2 = new Audio(chrome.runtime.getURL(fallbackPath));
-                    a2.volume = 0.7;
-                    a2.play().catch(error => {
-                        console.log('Fallback автовоспроизведение заблокировано:', error);
-                        this.createManualPlayButton(type);
-                    });
-                } else {
-                    this.createManualPlayButton(type);
-                }
-            };
-
-            audio.onerror = () => tryFallback();
+            
             audio.play().catch(error => {
                 console.log('Автовоспроизведение заблокировано:', error);
-                tryFallback.call(this);
+                // Создаем кнопку для ручного воспроизведения
+                this.createManualPlayButton(type);
             });
         },
 

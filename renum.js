@@ -5,36 +5,13 @@
 
     const CONFIG = {
         DEBOUNCE_DELAY: 300,
+        MP3_PATH: 'sounds/num/',
+        SUCCESS_SOUND: 'sounds/success-ship.mp3',
         NUMBER_SPEED: 1.1,
         SUCCESS_SPEED: 1.1,
         VOLUME: 1.0,
         OVERLAP_MS: 550
     };
-
-    // Динамические пути на основе voiceProfile
-    // При смене профиля через попап — следующее воспроизведение
-    // автоматически использует новые файлы без перезагрузки страницы.
-    // Fallback: если файл профиля не найден — используется alice.
-    let voiceProfile = 'default';
-
-    function getProfile() {
-        return (voiceProfile && voiceProfile !== 'default') ? voiceProfile : 'alice';
-    }
-
-    function getMp3Path() {
-        return `sounds/${getProfile()}/num/`;
-    }
-    function getFallbackMp3Path() {
-        const profile = getProfile();
-        return profile !== 'alice' ? 'sounds/alice/num/' : null;
-    }
-    function getSuccessSoundPath() {
-        return `sounds/${getProfile()}/ordertype/success-ship.mp3`;
-    }
-    function getFallbackSuccessSoundPath() {
-        const profile = getProfile();
-        return profile !== 'alice' ? 'sounds/alice/ordertype/success-ship.mp3' : null;
-    }
 
     let observer = null;
     let acceptancePageDetected = false;
@@ -50,10 +27,10 @@
     function playBeepSound(audioContext) {
         try {
             // три одинаковых быстрых сигнала подряд
-                playBeep(audioContext, 0, 550);
-                playBeep(audioContext, 0, 100);
-                playBeep(audioContext, 0.07, 650);
-                playBeep(audioContext, 0.07, 100);
+		playBeep(audioContext, 0, 550);
+		playBeep(audioContext, 0, 100);
+		playBeep(audioContext, 0.07, 650);
+		playBeep(audioContext, 0.07, 100);
 
             function playBeep(ctx, startTime, freq) {
                 const oscillator = ctx.createOscillator();
@@ -89,18 +66,12 @@
         // короткий сигнал перед числом
         playHighBeep();
 
-        // Пробуем сначала профильный файл (например mita), потом alice
-        const profileUrl = chrome.runtime.getURL(`${getMp3Path()}${number}.mp3`);
-        const fallbackUrl = getFallbackMp3Path()
-            ? chrome.runtime.getURL(`${getFallbackMp3Path()}${number}.mp3`)
-            : null;
-
-        if (await checkFileExists(profileUrl)) {
-            playAudio(profileUrl, fallbackUrl);
+        const full = chrome.runtime.getURL(`${CONFIG.MP3_PATH}${number}.mp3`);
+        if (await checkFileExists(full)) {
+            playAudio(full);
             return;
         }
 
-        // Файл не найден — разбираем на компоненты с fallback
         const seq = buildSequence(number);
         playSequence(seq);
     }
@@ -114,79 +85,38 @@
         }
     }
 
-    function playAudio(src, fallbackSrc = null, speed = CONFIG.NUMBER_SPEED) {
-        try {
-            chrome.runtime.sendMessage({
-                action: 'mh-play-audio',
-                src,
-                volume: CONFIG.VOLUME,
-                speed,
-                fallbackSrc,
-                requestId: 'renum_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
-            }).catch(() => {
-                // Fallback: попробовать локальное воспроизведение
-                try {
-                    const a = new Audio(fallbackSrc || src);
-                    a.volume = CONFIG.VOLUME;
-                    a.playbackRate = speed;
-                    a.play().catch(() => {
-                        // Если fallback тоже не работает — пробуем основной
-                        if (fallbackSrc) {
-                            try {
-                                const a2 = new Audio(src);
-                                a2.volume = CONFIG.VOLUME;
-                                a2.playbackRate = speed;
-                                a2.play().catch(() => {});
-                            } catch (e3) {}
-                        }
-                    });
-                } catch (e) {}
-            });
-        } catch (e) {
-            // Fallback: локальное воспроизведение
-            try {
-                const a = new Audio(fallbackSrc || src);
-                a.volume = CONFIG.VOLUME;
-                a.playbackRate = speed;
-                a.play().catch(() => {});
-            } catch (e2) {}
-        }
+    function playAudio(src, speed = CONFIG.NUMBER_SPEED) {
+        const a = new Audio(src);
+        a.volume = CONFIG.VOLUME;
+        a.playbackRate = speed;
+        a.play().catch(() => {});
     }
 
     function playSuccess() {
-        const src = chrome.runtime.getURL(getSuccessSoundPath());
-        const fallback = getFallbackSuccessSoundPath()
-            ? chrome.runtime.getURL(getFallbackSuccessSoundPath())
-            : null;
-        playAudio(src, fallback, CONFIG.SUCCESS_SPEED);
+        playAudio(chrome.runtime.getURL(CONFIG.SUCCESS_SOUND), CONFIG.SUCCESS_SPEED);
     }
 
     function playSequence(seq) {
-        seq.forEach(({ src, fallback }, i) => {
-            setTimeout(() => playAudio(src, fallback), i * CONFIG.OVERLAP_MS);
+        seq.forEach((src, i) => {
+            setTimeout(() => playAudio(src), i * CONFIG.OVERLAP_MS);
         });
     }
 
     function buildSequence(num) {
         const out = [];
         if (num <= 20) {
-            out.push(urlWithFallback(num));
+            out.push(url(num));
         } else if (num < 100) {
-            out.push(urlWithFallback(Math.floor(num / 10) * 10));
-            if (num % 10) out.push(urlWithFallback(num % 10));
+            out.push(url(Math.floor(num / 10) * 10));
+            if (num % 10) out.push(url(num % 10));
         } else if (num < 1000) {
-            out.push(urlWithFallback(Math.floor(num / 100) * 100));
+            out.push(url(Math.floor(num / 100) * 100));
             if (num % 100) out.push(...buildSequence(num % 100));
         }
         return out;
     }
 
-    const urlWithFallback = n => ({
-        src: chrome.runtime.getURL(`${getMp3Path()}${n}.mp3`),
-        fallback: getFallbackMp3Path()
-            ? chrome.runtime.getURL(`${getFallbackMp3Path()}${n}.mp3`)
-            : null
-    });
+    const url = n => chrome.runtime.getURL(`${CONFIG.MP3_PATH}${n}.mp3`);
 
     // ================= HELPERS =================
     function debounce(fn, ms) {
@@ -282,26 +212,7 @@
         }
     }, CONFIG.DEBOUNCE_DELAY);
 
-    // Читаем voiceProfile из chrome.storage.sync и слушаем изменения
-    function initVoiceProfile() {
-        try {
-            chrome.storage.sync.get(['voiceProfile'], ({ voiceProfile: profile }) => {
-                voiceProfile = profile || 'default';
-                console.log('🔊 RENUM voiceProfile:', voiceProfile);
-            });
-            chrome.storage.onChanged.addListener((changes) => {
-                if (changes.voiceProfile) {
-                    voiceProfile = changes.voiceProfile.newValue || 'default';
-                    console.log('🔊 RENUM voiceProfile changed:', voiceProfile);
-                }
-            });
-        } catch (e) {
-            console.log('RENUM: ошибка чтения voiceProfile:', e);
-        }
-    }
-
     function init() {
-        initVoiceProfile();
         observer = new MutationObserver(handleChange);
         observer.observe(document.body, {
             childList: true,

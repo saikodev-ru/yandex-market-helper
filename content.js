@@ -1,22 +1,13 @@
-// === Динамические аудио-URL (поддержка смены профиля озвучки) ===
-// Возвращает { src, fallback } на основе текущего voiceProfile.
-// При смене профиля через попап — следующее воспроизведение
-// автоматически использует новые файлы без перезагрузки страницы.
-function getOrderTypeAudio(name) {
-  const profile = (voiceProfile && voiceProfile !== 'default') ? voiceProfile : 'alice';
-  return {
-    src:      chrome.runtime.getURL(`sounds/${profile}/ordertype/${name}.mp3`),
-    fallback: profile !== 'alice'
-      ? chrome.runtime.getURL(`sounds/alice/ordertype/${name}.mp3`)
-      : null
-  };
-}
-
-// === Профиль озвучки ===
-// 'default' — sounds/alice/num/N.mp3, sounds/alice/ordertype/*.mp3, sounds/alice/ship/*.mp3
-// 'alice'   — sounds/alice/{num,ordertype,ship}/ (основной голос)
-// 'mita'    — sounds/mita/{num,ordertype,ship}/ (альтернативный голос)
-let voiceProfile = 'default';
+// === Аудио константы ===
+const AVITO_AUDIO             = chrome.runtime?.getURL('sounds/avito.mp3');
+const LAMODA_AUDIO            = chrome.runtime?.getURL('sounds/lamoda.mp3');
+const PLACEMENT_COMPLETE_AUDIO = chrome.runtime?.getURL('sounds/placement_complete.mp3');
+const NOOPEN_AUDIO            = chrome.runtime?.getURL('sounds/no_open.mp3');
+const CHINA_AUDIO             = chrome.runtime?.getURL('sounds/china.mp3');
+const GO_AUDIO                = chrome.runtime?.getURL('sounds/go.mp3');
+const ENTERCODE_AUDIO         = chrome.runtime?.getURL('sounds/entercode.mp3');
+const OPLATA_AUDIO            = chrome.runtime?.getURL('sounds/oplata.mp3');
+const SUCCESS_SHIP_AUDIO      = chrome.runtime?.getURL('sounds/success-ship.mp3');
 
 // === Глобальные переменные ===
 let voiceAlertsEnabled       = true;
@@ -38,12 +29,9 @@ let lastSuccessShipPlay      = 0;
 
 let enterCodeSoundPlayed     = false;
 let oplataSoundPlayed        = false;
-let postPaymentPlayed        = false; // «Оплата при получении» — 1 раз за сессию выдачи
-let paymentErrorPlayed       = false; // «Ошибка оплаты» — 1 раз за сессию выдачи
+let enterCodeAudio           = null;
 let lamodaSoundPlayed        = false;
 let codeAcceptedSoundPlayed  = false;
-let issuingCellVoiceEnabled  = true;
-let _lastCellSpoken          = { number: 0, time: 0 }; // анти-дупликация: номер + время последней озвучки
 
 // Поллер завершения размещения (для React-страниц с отложенной загрузкой)
 let placementCompletePoller  = null;
@@ -53,495 +41,16 @@ let currentURL = location.href;
 
 
 // ============================================================
-// === Звуковая очередь (SoundQueue) ===
-// ============================================================
-// Централизованная очередь воспроизведения звуков.
-// Все MP3-звуки добавляются в очередь и играют последовательно
-// с настраиваемой задержкой между ними, вместо одновременного
-// воспроизведения, которое создаёт "кашу" из звуков.
-//
-// Пример: china.mp3 + oplata.mp3 →
-//   china.mp3 ⏸ 300мс ⏸ oplata.mp3
-//
-// Составные звуки (oplata = success-ship + oplata) добавляются
-// через addChain() и гарантированно играют подряд.
-// ============================================================
-
-const SoundQueue = {
-  queue: [],
-  isPlaying: false,
-  GAP_MS: 100, // задержка между звуками в очереди (мс)
-  _requestCounter: 0,
-  _pendingRequests: new Map(), // requestId -> { advance, timer }
-
-  /** Добавить один звук в очередь
-   *  @param {string|Function} src - URL mp3 или функция осциллятора
-   *  @param {Object} options - { volume, speed, label, duration, fallback } */
-  add(src, options = {}) {
-    const { volume = 0.8, speed = 1.0, label = '', duration = 300, fallback } = options;
-    const type = typeof src === 'function' ? 'fn' : 'mp3';
-    const item = { src, volume, speed, type, label, duration, fallback };
-
-    this.queue.push(item);
-    console.log(`\u{1F50A} Queue: +"${label}" (\u0432 \u043E\u0447\u0435\u0440\u0435\u0434\u0438: ${this.queue.length}, \u0438\u0433\u0440\u0430\u0435\u0442: ${this.isPlaying})`);
-    if (!this.isPlaying) this._processNext();
-  },
-
-  /** Добавить цепочку звуков (строго по порядку)
-   *  @param {Array} items - [{ src, volume, speed, label, duration, fallback }] */
-  addChain(items) {
-    for (const item of items) {
-      const { src, volume = 0.8, speed = 1.0, label = '', duration = 300, fallback } = item;
-      const type = typeof src === 'function' ? 'fn' : 'mp3';
-      const entry = { src, volume, speed, type, label, duration, fallback };
-      this.queue.push(entry);
-    }
-    console.log(`\u{1F50A} Queue: +chain[${items.length}] (\u0432 \u043E\u0447\u0435\u0440\u0435\u0434\u0438: ${this.queue.length}, \u0438\u0433\u0440\u0430\u0435\u0442: ${this.isPlaying})`);
-    if (!this.isPlaying && this.queue.length > 0) this._processNext();
-  },
-
-  /** Внутренний метод - обработать следующий звук в очереди */
-  _processNext() {
-    if (this.queue.length === 0) {
-      this.isPlaying = false;
-      return;
-    }
-    this.isPlaying = true;
-    const item = this.queue.shift();
-    console.log(`\u{1F50A} Queue: \u25B6 "${item.label}" (\u043E\u0441\u0442\u0430\u043B\u043E\u0441\u044C: ${this.queue.length})`);
-
-    if (item.type === 'fn') {
-      try { item.src(); } catch (e) { console.warn('Queue fn error:', e); }
-      setTimeout(() => this._processNext(), (item.duration || 300) + this.GAP_MS);
-    } else {
-      this._playOffscreen(item);
-    }
-  },
-
-  /** Воспроизвести MP3.
-   *  1. Сначала пробуем локально через new Audio() (работает если пользователь
-   *     уже взаимодействовал со страницей — 99% случаев)
-   *  2. Если браузер заблокировал автоплей (NotAllowedError) — отправляем
-   *     в offscreen document, который умеет играть без user gesture.
-   *  3. Fallback на alice-файлы если профильный файл не найден.
-   *  Страховка: advance() через 15 сек чтобы очередь не зависла. */
-  _playOffscreen(item) {
-    let advanced = false;
-    const advance = () => {
-      if (advanced) return;
-      advanced = true;
-      clearTimeout(safetyTimer);
-      this._pendingRequests.delete(requestId);
-      setTimeout(() => this._processNext(), this.GAP_MS);
-    };
-
-    const requestId = 'sq_' + (++this._requestCounter) + '_' + Date.now();
-    this._pendingRequests.set(requestId, { item, advance });
-
-    // Страховка: если ничего не ответит через 15 сек
-    const safetyTimer = setTimeout(() => {
-      console.warn(`\u{1F50A} Queue: timeout для "${item.label}"`);
-      advance();
-    }, 15000);
-
-    let fallbackTried = false;
-
-    const playUrl = (url) => {
-      try {
-        const a = new Audio(url);
-        a.volume = item.volume ?? 0.8;
-        if (item.speed && item.speed !== 1.0) a.playbackRate = item.speed;
-        a.onended = () => { clearTimeout(safetyTimer); advance(); };
-        a.onerror = () => {
-          console.warn(`\u{1F50A} Queue: onerror "${item.label}" src=${url.slice(-40)}`);
-          if (!fallbackTried && item.fallback) {
-            fallbackTried = true;
-            playUrl(item.fallback);
-          } else {
-            clearTimeout(safetyTimer);
-            advance();
-          }
-        };
-        a.play().then(() => {
-          console.log(`\u{1F50A} Queue: playing "${item.label}" ✓`);
-        }).catch((err) => {
-          console.warn(`\u{1F50A} Queue: play() reject "${item.label}":`, err.name, err.message);
-          if (err.name === 'NotAllowedError') {
-            // Автоплей заблокирован — пробуем скрытый iframe (extension page без user gesture)
-            _playInIframe(item.src, item.fallback, item.volume, item.speed, requestId);
-          } else if (!fallbackTried && item.fallback) {
-            fallbackTried = true;
-            playUrl(item.fallback);
-          } else {
-            clearTimeout(safetyTimer);
-            advance();
-          }
-        });
-      } catch (e) {
-        console.warn(`\u{1F50A} Queue: Audio() exception for "${item.label}":`, e);
-        clearTimeout(safetyTimer);
-        advance();
-      }
-    };
-
-    playUrl(item.src);
-  },
-
-  /** Обработать ответ от offscreen (вызывается из onMessage listener) */
-  _onAudioDone(requestId) {
-    const pending = this._pendingRequests.get(requestId);
-    if (pending) {
-      pending.advance();
-    }
-  },
-
-  /** Добавить приоритетный звук */
-  addPriority(src, options = {}) {
-    const { volume = 0.8, speed = 1.0, label = '', duration = 300, fallback } = options;
-    const type = typeof src === 'function' ? 'fn' : 'mp3';
-    const item = { src, volume, speed, type, label, duration, fallback };
-
-    this.queue.unshift(item);
-    console.log(`\u{1F50A} Queue: +priority "${label}" (\u0432 \u043E\u0447\u0435\u0440\u0435\u0434\u0438: ${this.queue.length}, \u0438\u0433\u0440\u0430\u0435\u0442: ${this.isPlaying})`);
-    if (!this.isPlaying) this._processNext();
-  },
-
-  /** Добавить приоритетную цепочку */
-  addPriorityChain(items) {
-    for (let i = items.length - 1; i >= 0; i--) {
-      const { src, volume = 0.8, speed = 1.0, label = '', duration = 300, fallback } = items[i];
-      const type = typeof src === 'function' ? 'fn' : 'mp3';
-      const entry = { src, volume, speed, type, label, duration, fallback };
-      this.queue.unshift(entry);
-    }
-    console.log(`\u{1F50A} Queue: +priorityChain[${items.length}] (\u0432 \u043E\u0447\u0435\u0440\u0435\u0434\u0438: ${this.queue.length}, \u0438\u0433\u0440\u0430\u0435\u0442: ${this.isPlaying})`);
-    if (!this.isPlaying) this._processNext();
-  },
-
-  /** Очистить очередь */
-  clear() {
-    this.queue = [];
-    console.log('\u{1F50A} Queue: очищена');
-  },
-
-  /** Количество звуков в очереди */
-  get pending() { return this.queue.length; }
-};
-
-// ── Слушатель ответов от offscreen document ───────────────────────────────────
-// Background.js пересылает 'mh-audio-done' из offscreen → content script,
-// чтобы SoundQueue знала что звук завершился и можно играть следующий.
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.action === 'mh-audio-done' && msg.requestId) {
-    SoundQueue._onAudioDone(msg.requestId);
-  }
-});
-
-
-// ── Скрытый iframe для воспроизведения аудио без user gesture ─────────────
-// ЧИТЕРСКИЙ КОСТЫЛЬ: extension pages (chrome-extension://) НЕ подчиняются
-// политике автоплея Chrome. Скрытый iframe с extension URL может играть
-// MP3 сразу после загрузки страницы — без клика, без user gesture.
-//
-// Схема:
-//   content.js → postMessage → iframe (audio-player.html) → new Audio()
-//   → onended → parent.postMessage → content.js → SoundQueue.advance()
-//
-// Двухуровневая стратегия в _playOffscreen:
-//   1. new Audio() локально (работает если пользователь УЖЕ кликнул)
-//   2. Если NotAllowedError → postMessage в iframe (работает ВСЕГДА)
-// ─────────────────────────────────────────────────────────────────────────────
-
-let _audioIframe = null;
-let _audioIframeReady = false;
-let _audioIframeQueue = []; // буфер сообщений до загрузки iframe
-
-/** Создать скрытый iframe с audio-player.html (если ещё не создан).
- *  Extension page внутри iframe может играть аудио без user gesture. */
-function _ensureAudioIframe() {
-  if (_audioIframe && _audioIframe.isConnected) return _audioIframe;
-
-  _audioIframe = document.createElement('iframe');
-  _audioIframe.src = chrome.runtime.getURL('audio-player.html');
-  _audioIframe.style.cssText = 'position:fixed;width:0;height:0;border:0;opacity:0;pointer-events:none;z-index:-1;';
-  _audioIframeReady = false;
-  _audioIframeQueue = [];
-
-  // append к body или documentElement (для document_start)
-  (document.body || document.documentElement).appendChild(_audioIframe);
-
-  // Слушаем сообщения от audio-player iframe
-  window.addEventListener('message', (event) => {
-    if (event.source !== _audioIframe?.contentWindow) return;
-    const data = event.data;
-    if (!data || !data.action) return;
-
-    if (data.action === 'mh-player-ready') {
-      _audioIframeReady = true;
-      console.log('\u{1F50A} Audio iframe ready');
-      // Отправляем все буферизованные команды
-      for (const msg of _audioIframeQueue) {
-        _audioIframe.contentWindow?.postMessage(msg, '*');
-      }
-      _audioIframeQueue = [];
-    }
-
-    if (data.action === 'mh-audio-done' && data.requestId) {
-      SoundQueue._onAudioDone(data.requestId);
-    }
-  });
-
-  console.log('\u{1F50A} Audio iframe created');
-  return _audioIframe;
-}
-
-/** Отправить звук в скрытый iframe (работает без user gesture).
- *  @param {string} src - URL MP3
- *  @param {string|null} fallbackSrc - fallback URL
- *  @param {number} volume - громкость 0..1
- *  @param {number} speed - скорость воспроизведения
- *  @param {string} requestId - уникальный ID запроса */
-function _playInIframe(src, fallbackSrc, volume, speed, requestId) {
-  const iframe = _ensureAudioIframe();
-  const msg = {
-    action: 'mh-play',
-    src, fallbackSrc,
-    volume: volume ?? 0.8,
-    speed: speed ?? 1.0,
-    requestId
-  };
-
-  if (_audioIframeReady) {
-    try {
-      iframe.contentWindow.postMessage(msg, '*');
-      console.log(`\u{1F50A} Queue: \u2192 iframe "${requestId}"`);
-    } catch (e) {
-      console.warn('\u{1F50A} Queue: iframe postMessage failed:', e);
-    }
-  } else {
-    _audioIframeQueue.push(msg);
-    console.log(`\u{1F50A} Queue: iframe buffering "${requestId}"`);
-  }
-}
-
-
-// ============================================================
-// === Всплывающие элементы (FadeIn) ===
-// ============================================================
-// Добавляет плавное появление (fade-in + translateY) новым
-// React-элементам при их добавлении в DOM. Управляется
-// настройкой fadeInElementsEnabled в chrome.storage.sync.
-//
-// Фильтры:
-//  — Исключаются невидимые узлы (SCRIPT, STYLE, LINK, etc.)
-//  — Исключаются слишком глубокие вложенные элементы (> 6 уровней)
-//  — Исключаются элементы внутри #modern-custom-nav
-//  — Исключаются тултипы, дропдауны и модалки (они уже анимируются)
-//  — Исключаются элементы размером < 20px (точки, иконки)
-// ============================================================
-
-let fadeInElementsEnabled = true;
-let fadeInObserver = null;
-
-// Теги, которые не нужно анимировать
-const FADEIN_IGNORE_TAGS = new Set([
-  'SCRIPT', 'STYLE', 'LINK', 'META', 'NOSCRIPT', 'BR', 'HR',
-  'SVG', 'PATH', 'CIRCLE', 'RECT', 'LINE', 'G', 'DEFS',
-  'USE', 'CLIPPATH', 'POLYGON', 'POLYLINE'
-]);
-
-// Классы/селекторы, которые не нужно анимировать (модалки, тултипы, навбар)
-const FADEIN_IGNORE_SELECTORS = [
-  '#modern-custom-nav',
-  '#modern-custom-nav *',
-  '.ReactModal__Overlay',
-  '.ReactModal__Content',
-  '[role="tooltip"]',
-  '[role="dialog"]',
-  '[data-testid="overlay"]',
-  '.mh-fadein',           // уже анимируется
-  '.mod-animate',         // уже анимируется redesign.js
-  '.barcode-generator-btn', // наша кнопка этикетки
-  '[data-saiko-identification]', // наш виджет идентификации
-];
-
-/** Проверяет, нужно ли анимировать элемент */
-function shouldFadeIn(el) {
-  if (!(el instanceof Element)) return false;
-  if (el.nodeType !== 1) return false;
-
-  // Невидимые теги
-  const tag = el.tagName;
-  if (FADEIN_IGNORE_TAGS.has(tag)) return false;
-
-  // Слишком мелкие элементы (< 20px по любой стороне)
-  // Используем offsetWidth/Height — быстрый layout-запрос только для новых элементов
-  if (el.offsetWidth < 20 || el.offsetHeight < 20) return false;
-
-  // Исключения по селекторам
-  for (const sel of FADEIN_IGNORE_SELECTORS) {
-    if (el.matches?.(sel)) return false;
-  }
-
-  // Исключаем элементы внутри исключённых контейнеров
-  // Проверяем до 4 уровней вверх
-  let parent = el.parentElement;
-  let depth = 0;
-  while (parent && depth < 4) {
-    for (const sel of FADEIN_IGNORE_SELECTORS) {
-      if (parent.matches?.(sel)) return false;
-    }
-    parent = parent.parentElement;
-    depth++;
-  }
-
-  return true;
-}
-
-/** Убирает класс анимации и inline-стили после завершения */
-function cleanupFadeIn(el) {
-  el.classList.remove('mh-fadein');
-  el.style.removeProperty('opacity');
-  el.style.removeProperty('transform');
-}
-
-/** Добавляет класс анимации (элемент уже скрыт через inline opacity:0) */
-function applyFadeIn(el) {
-  el.classList.add('mh-fadein');
-  el.addEventListener('animationend', () => cleanupFadeIn(el), { once: true });
-  // Страховка: убираем класс и стили через 600мс даже если animationend не сработал
-  setTimeout(() => cleanupFadeIn(el), 600);
-}
-
-// ─── Буфер батчинга анимаций ─────────────────────────────────────────────────
-// Элементы прячутся (opacity:0) сразу в коллбэке MutationObserver —
-// чтобы браузер не успел их отрисовать видимыми.
-// Анимация запускается разом в requestAnimationFrame — все элементы
-// одного рендер-цикла React всплывают синхронно.
-let fadeInBatch = [];
-let fadeInRafId = 0;
-
-/** Сбросить буфер: запустить анимации для всех накопленных элементов */
-function flushFadeInBatch() {
-  const batch = fadeInBatch;
-  fadeInBatch = [];
-  fadeInRafId = 0;
-  for (const el of batch) {
-    // Элемент мог быть удалён из DOM пока ждали rAF
-    if (el.isConnected) applyFadeIn(el);
-  }
-}
-
-/** Спрятать элемент и поставить в очередь на анимацию */
-function queueFadeIn(el) {
-  // Скрываем мгновенно (до ближайшей отрисовки), чтобы не было
-  // вспышки «видим → скрыт → анимация». Inline-стиль без !important,
-  // поэтому CSS-анимация его переопределит.
-  el.style.opacity = '0';
-  el.style.transform = 'translateY(12px)';
-
-  fadeInBatch.push(el);
-  if (!fadeInRafId) {
-    fadeInRafId = requestAnimationFrame(flushFadeInBatch);
-  }
-}
-
-/** Callback MutationObserver для fadeIn */
-function handleFadeInMutations(mutations) {
-  if (!fadeInElementsEnabled) return;
-
-  for (const mutation of mutations) {
-    if (mutation.type !== 'childList') continue;
-
-    for (const node of mutation.addedNodes) {
-      if (node.nodeType !== 1) continue;
-
-      // Сам элемент
-      if (shouldFadeIn(node)) {
-        queueFadeIn(node);
-      }
-
-      // Дочерние элементы первого уровня (React часто вставляет контейнеры
-      // с уже готовыми детьми, и сам контейнер не проходит фильтр по размеру)
-      if (node.childNodes?.length > 0 && node.childNodes.length < 20) {
-        for (const child of node.childNodes) {
-          if (child.nodeType === 1 && shouldFadeIn(child)) {
-            queueFadeIn(child);
-          }
-        }
-      }
-    }
-  }
-}
-
-/** Запустить наблюдатель за новыми элементами */
-function startFadeInObserver() {
-  if (fadeInObserver) return;
-  if (!document.body) return;
-
-  fadeInObserver = new MutationObserver(handleFadeInMutations);
-  fadeInObserver.observe(document.body, {
-    childList: true,
-    subtree: true,
-  });
-  console.log('[Saiko] FadeIn: наблюдатель запущен');
-}
-
-/** Остановить наблюдатель */
-function stopFadeInObserver() {
-  if (!fadeInObserver) return;
-  fadeInObserver.disconnect();
-  fadeInObserver = null;
-  // Очистить буфер, снять inline-стили с ожидающих элементов и отменить rAF
-  for (const el of fadeInBatch) {
-    el.style.removeProperty('opacity');
-    el.style.removeProperty('transform');
-  }
-  fadeInBatch = [];
-  if (fadeInRafId) {
-    cancelAnimationFrame(fadeInRafId);
-    fadeInRafId = 0;
-  }
-  console.log('[Saiko] FadeIn: наблюдатель остановлен');
-}
-
-/** Инициализация настройки fadeInElementsEnabled */
-function initFadeInSetting() {
-  try {
-    chrome.storage.sync.get(['fadeInElementsEnabled'], ({ fadeInElementsEnabled: enabled }) => {
-      fadeInElementsEnabled = enabled !== false; // по умолчанию включено
-      if (fadeInElementsEnabled) startFadeInObserver();
-    });
-
-    chrome.storage.onChanged.addListener((changes) => {
-      if (!('fadeInElementsEnabled' in changes)) return;
-      fadeInElementsEnabled = changes.fadeInElementsEnabled.newValue !== false;
-      if (fadeInElementsEnabled) {
-        startFadeInObserver();
-      } else {
-        stopFadeInObserver();
-      }
-      console.log('[Saiko] FadeIn:', fadeInElementsEnabled ? 'включён' : 'выключен');
-    });
-  } catch (error) {
-    console.error('[Saiko] FadeIn: ошибка инициализации:', error);
-  }
-}
-
-
-// ============================================================
 // === Инициализация настроек ===
 // ============================================================
 
 function initVoiceSettings() {
   try {
     chrome.storage.sync.get(
-      ["voiceAlertsEnabled", "placementCompleteEnabled", "issuingCellVoiceEnabled", "voiceProfile"],
-      ({ voiceAlertsEnabled: enabled, placementCompleteEnabled: placementEnabled, issuingCellVoiceEnabled: cellEnabled, voiceProfile: profile }) => {
+      ["voiceAlertsEnabled", "placementCompleteEnabled"],
+      ({ voiceAlertsEnabled: enabled, placementCompleteEnabled: placementEnabled }) => {
         voiceAlertsEnabled       = !!enabled;
         placementCompleteEnabled = !!placementEnabled;
-        issuingCellVoiceEnabled  = cellEnabled !== false;
-        voiceProfile             = profile || 'default';
       }
     );
 
@@ -553,14 +62,6 @@ function initVoiceSettings() {
       if (changes.placementCompleteEnabled) {
         placementCompleteEnabled = changes.placementCompleteEnabled.newValue;
         console.log("Озвучка завершения приёмки:", placementCompleteEnabled ? "включена" : "выключена");
-      }
-      if (changes.issuingCellVoiceEnabled) {
-        issuingCellVoiceEnabled = changes.issuingCellVoiceEnabled.newValue !== false;
-        console.log("Озвучка ячейки выдачи:", issuingCellVoiceEnabled ? "включена" : "выключена");
-      }
-      if (changes.voiceProfile) {
-        voiceProfile = changes.voiceProfile.newValue || 'default';
-        console.log("Профиль озвучки:", voiceProfile);
       }
     });
   } catch (error) {
@@ -578,13 +79,17 @@ function playSound() {
   const now = Date.now();
   if (now - lastPlayTime < 5000) return;
   lastPlayTime = now;
-  const { src, fallback } = getOrderTypeAudio('avito');
-  SoundQueue.add(src, { label: 'avito', fallback });
+  if (!AVITO_AUDIO) return;
+  const audio = new Audio(AVITO_AUDIO);
+  audio.volume = 0.8;
+  audio.play().catch(err => console.warn("Ошибка воспроизведения avito:", err));
 }
 
 function playCameraSound() {
-  const { src, fallback } = getOrderTypeAudio('camera');
-  SoundQueue.add(src, { label: 'camera', fallback });
+  if (!CAMERA_AUDIO) return;
+  const audio = new Audio(CAMERA_AUDIO);
+  audio.volume = 0.8;
+  audio.play().catch(() => {});
 }
 
 /** Звук «Ввести код выдачи» — воспроизводится один раз на странице,
@@ -594,12 +99,21 @@ function playEnterCodeSound() {
   if (enterCodeSoundPlayed) return;
   enterCodeSoundPlayed = true;
 
-  const { src: ecSrc, fallback: ecFallback } = getOrderTypeAudio('entercode');
-  SoundQueue.add(ecSrc, { label: 'entercode', volume: 0.8, fallback: ecFallback });
+  if (!ENTERCODE_AUDIO) {
+    console.warn("ENTERCODE_AUDIO не найден");
+    return;
+  }
+
+  enterCodeAudio = new Audio(ENTERCODE_AUDIO);
+  enterCodeAudio.volume = 0.8;
+  enterCodeAudio.play().catch(err => console.warn("Ошибка воспроизведения entercode:", err));
 
   const stopOnKey = () => {
-    // Очищаем очередь если звук ещё не проигрался
-    SoundQueue.clear();
+    if (enterCodeAudio) {
+      enterCodeAudio.pause();
+      enterCodeAudio.currentTime = 0;
+      enterCodeAudio = null;
+    }
     document.removeEventListener('keydown', stopOnKey);
   };
   document.addEventListener('keydown', stopOnKey, { once: true });
@@ -629,8 +143,11 @@ function playLamodaSound() {
   lastLamodaPlay = now;
   lamodaSoundPlayed = true;
 
-  const { src: lmSrc, fallback: lmFallback } = getOrderTypeAudio('lamoda');
-  SoundQueue.add(lmSrc, { label: 'lamoda', fallback: lmFallback });
+  if (!LAMODA_AUDIO) return;
+  const audio = new Audio(LAMODA_AUDIO);
+  audio.volume = 0.8;
+  audio.play().catch(err => console.warn("Ошибка воспроизведения Lamoda:", err));
+
   setTimeout(() => { lamodaSoundPlayed = false; }, 10000);
 }
 
@@ -638,16 +155,20 @@ function playChinaSound() {
   const now = Date.now();
   if (now - lastChinaPlay < 5000) return;
   lastChinaPlay = now;
-  const { src, fallback } = getOrderTypeAudio('china');
-  SoundQueue.add(src, { label: 'china', fallback });
+  if (!CHINA_AUDIO) return;
+  const audio = new Audio(CHINA_AUDIO);
+  audio.volume = 0.8;
+  audio.play().catch(err => console.warn("Ошибка воспроизведения china:", err));
 }
 
 function playNoOpenSound() {
   const now = Date.now();
   if (now - lastNoOpenPlay < 5000) return;
   lastNoOpenPlay = now;
-  const { src, fallback } = getOrderTypeAudio('no_open');
-  SoundQueue.add(src, { label: 'no_open', fallback });
+  if (!NOOPEN_AUDIO) return;
+  const audio = new Audio(NOOPEN_AUDIO);
+  audio.volume = 0.8;
+  audio.play().catch(err => console.warn("Ошибка воспроизведения no_open:", err));
 }
 
 function playGoSound() {
@@ -655,85 +176,27 @@ function playGoSound() {
   const now = Date.now();
   if (now - lastGoPlay < 3000) return;
   lastGoPlay = now;
-  // Ошибка-бип + go.mp3 играют в очереди по порядку
-  SoundQueue.addChain([
-    { src: playErrorBeep, duration: 300, label: 'error_beep' },
-    { ...getOrderTypeAudio('go'), label: 'go' }
-  ]);
+  playErrorBeep();
+  setTimeout(() => {
+    if (!GO_AUDIO) return;
+    const audio = new Audio(GO_AUDIO);
+    audio.volume = 0.8;
+    audio.play().catch(err => console.warn("Ошибка воспроизведения go:", err));
+  }, 500);
 }
 
 function playOplataSound() {
   if (!oplataSoundEnabled) return;
   if (oplataSoundPlayed) return;
   oplataSoundPlayed = true;
-  // Обновляем кулдаун success-ship, чтобы он не проигрался повторно
-  // из другого триггера прямо после oplata
-  lastSuccessShipPlay = Date.now();
-  const ss = getOrderTypeAudio('success-ship');
-  const op = getOrderTypeAudio('oplata');
-  // success-ship + oplata играют в очереди по порядку
-  SoundQueue.addChain([
-    { ...ss, label: 'success_ship (oplata)' },
-    { ...op, label: 'oplata' }
-  ]);
+  playSuccessBeep();
+  setTimeout(() => {
+    if (!OPLATA_AUDIO) return;
+    const audio = new Audio(OPLATA_AUDIO);
+    audio.volume = 0.8;
+    audio.play().catch(err => console.warn("Ошибка воспроизведения oplata:", err));
+  }, 300);
   setTimeout(() => { oplataSoundPlayed = false; }, 10000);
-}
-
-/** Звук «Оплата при получении» — вызывается из MAIN world через событие
- *  ИЛИ через DOM-триггер (обнаружение «Терминал / наличные» / «Привязанной картой»).
- *  Привязан к конкретному заказу (sessionId из URL), чтобы не повторялся
- *  при динамических обновлениях страницы выдачи без перехода. */
-function playPostPaymentSound() {
-  if (!voiceAlertsEnabled) return;
-  if (postPaymentPlayed) return;
-  postPaymentPlayed = true;
-  const { src, fallback } = getOrderTypeAudio('post_payment');
-  SoundQueue.add(src, { label: 'post_payment', fallback });
-  // Не сбрасываем постфлаг по таймауту — он привязан к конкретной сессии выдачи.
-  // Сброс происходит только при настоящей навигации (SPA или F5).
-}
-
-/** Звук «Ошибка оплаты» — вызывается из MAIN world через событие
- *  когда Яндекс пытается проиграть звук ошибки оплаты. */
-function playPaymentErrorSound() {
-  if (!voiceAlertsEnabled) return;
-  if (paymentErrorPlayed) return;
-  paymentErrorPlayed = true;
-  const { src, fallback } = getOrderTypeAudio('payment_error');
-  SoundQueue.add(src, { label: 'payment_error', fallback });
-}
-
-// _sendToOffscreen удалён — заменён на _playInIframe (скрытый iframe с extension page).
-// Extension pages (chrome-extension://) не подчиняются политике автоплея —
-// это надёжнее и проще чем offscreen document API.
-
-/** Воспроизвести звук НЕМЕДЛЕННО, вне очереди SoundQueue.
- *  Используется для success-ship — должен звучать поверх других звуков.
- *  Пробует локально, при NotAllowedError — скрытый iframe. */
-function _playImmediate(src, options = {}) {
-  const { volume = 0.8, speed = 1.0, fallback } = options;
-  let fallbackTried = false;
-
-  const playUrl = (url) => {
-    try {
-      const a = new Audio(url);
-      a.volume = volume;
-      if (speed && speed !== 1.0) a.playbackRate = speed;
-      a.onerror = () => {
-        if (!fallbackTried && fallback) { fallbackTried = true; playUrl(fallback); }
-      };
-      a.play().catch((err) => {
-        if (err.name === 'NotAllowedError') {
-          // Автоплей заблокирован — пробуем скрытый iframe
-          const rid = 'imm_' + Date.now();
-          _playInIframe(url, fallbackTried ? null : fallback, volume, speed, rid);
-        } else if (!fallbackTried && fallback) {
-          fallbackTried = true; playUrl(fallback);
-        }
-      });
-    } catch(e) {}
-  };
-  playUrl(src);
 }
 
 function playSuccessBeep() {
@@ -742,9 +205,10 @@ function playSuccessBeep() {
     const now = Date.now();
     if (now - lastSuccessShipPlay < 3000) return;
     lastSuccessShipPlay = now;
-    const ss = getOrderTypeAudio('success-ship');
-    // Играем НЕМЕДЛЕННО, вне очереди — success-ship должен звучать поверх других звуков
-    _playImmediate(ss.src, { volume: 0.8, fallback: ss.fallback });
+    if (!SUCCESS_SHIP_AUDIO) return;
+    const audio = new Audio(SUCCESS_SHIP_AUDIO);
+    audio.volume = 0.8;
+    audio.play().catch(err => console.warn("Ошибка воспроизведения success-ship:", err));
   } catch (error) {
     console.log('Ошибка в playSuccessBeep:', error);
   }
@@ -755,140 +219,10 @@ function playPlacementCompleteSound() {
   const now = Date.now();
   if (now - lastPlacementCompletePlay < 5000) return;
   lastPlacementCompletePlay = now;
-  const { src, fallback } = getOrderTypeAudio('placement_complete');
-  SoundQueue.add(src, { label: 'placement_complete', fallback });
-}
-
-
-// ============================================================
-// === Озвучка ячейки выдачи ===
-// ============================================================
-// На странице issuing/client-session находит цифру ячейки из элемента
-// с data-i18n-key="features.client-issuing-session:order-card.deliver.cell.sub-title"
-// и озвучивает её через SoundQueue с приоритетом.
-// Воспроизводится ровно 1 раз за страницу, не повторяется.
-// ============================================================
-
-/** Строит последовательность MP3-файлов для озвучки числа ячейки.
- *  Если есть готовый файл (N.mp3) — использует его напрямую.
- *  Иначе — разбирает на имеющиеся компоненты (сотни + десятки + единицы).
- *  Поддерживает профиль озвучки: sounds/{profile}/num/N.mp3 → fallback на sounds/alice/num/N.mp3 */
-function buildCellNumberSequence(num) {
-  const DEFAULT_PATH = 'sounds/alice/num/';
-  const profilePath  = (voiceProfile && voiceProfile !== 'default')
-    ? `sounds/${voiceProfile}/num/`
-    : null;
-
-  // Возвращает URL с учётом профиля: сначала пробуем profile/num/, потом alice/num/
-  const url = n => {
-    if (profilePath) {
-      // Мы не можем синхронно проверить существование файла в extension,
-      // поэтому всегда строим URL профиля — если файл не найден,
-      // onerror в SoundQueue._playMp3 => advance(), звук пропускается.
-      // Для надёжности: возвращаем [profileUrl, defaultUrl] — SoundQueue
-      // попробует профильный файл, при onerror — default (через fallback-цепочку).
-      return chrome.runtime.getURL(`${profilePath}${n}.mp3`);
-    }
-    return chrome.runtime.getURL(`${DEFAULT_PATH}${n}.mp3`);
-  };
-  const urlDefault = n => chrome.runtime.getURL(`${DEFAULT_PATH}${n}.mp3`);
-
-  // Доступные числа: 1–144, 200, 300, 400
-  const AVAILABLE = new Set();
-  for (let i = 1; i <= 144; i++) AVAILABLE.add(i);
-  AVAILABLE.add(200);
-  AVAILABLE.add(300);
-  AVAILABLE.add(400);
-
-  // Прямой файл есть — используем сразу
-  if (AVAILABLE.has(num)) {
-    if (profilePath) {
-      // Для профиля возвращаем пару: [profileUrl, defaultFallbackUrl]
-      // SoundQueue сыграет первый доступный (через tryUrls)
-      return [{ src: url(num), fallback: urlDefault(num) }];
-    }
-    return [url(num)];
-  }
-
-  // Иначе — разбираем на компоненты
-  const out = [];
-  const hundreds = Math.floor(num / 100) * 100;
-  const remainder = num - hundreds;
-
-  if (hundreds > 0) {
-    if (AVAILABLE.has(hundreds)) {
-      out.push(...buildCellNumberSequence(hundreds));
-    } else {
-      // Сотни выше 400 — по цифрам
-      for (const d of String(Math.floor(num / 100))) out.push(...buildCellNumberSequence(parseInt(d)));
-    }
-  }
-
-  if (remainder > 0) {
-    out.push(...buildCellNumberSequence(remainder));
-  }
-
-  // Если ничего не собрали (число = 0 или ошибочное) — по цифрам
-  if (out.length === 0 && num > 0) {
-    for (const d of String(num).split('')) out.push(...buildCellNumberSequence(parseInt(d)));
-  }
-
-  return out;
-}
-
-/** Найти и озвучить ячейку выдачи (только 1 раз за страницу) */
-function trySpeakIssuingCell(rootNode) {
-  if (!issuingCellVoiceEnabled) return;
-
-  // Проверяем что мы на странице issuing/client-session
-  if (!/\/issuing\/client-session\//.test(location.pathname)) return;
-
-  // Ищем элемент "Ячейка" — span с data-i18n-key
-  const cellKey = 'features.client-issuing-session:order-card.deliver.cell.sub-title';
-  const cellLabel = rootNode.matches?.(`[data-i18n-key="${cellKey}"]`)
-    ? rootNode
-    : rootNode.querySelector?.(`[data-i18n-key="${cellKey}"]`);
-
-  if (!cellLabel) return;
-
-  // Цифра ячейки — предыдущий sibling span в том же родителе
-  // Структура: <div ...> <span style="font-weight:700">112</span> <span data-i18n-key="...">Ячейка</span> </div>
-  const cellContainer = cellLabel.parentElement;
-  if (!cellContainer) return;
-
-  // Ищем span с цифрой — предыдущий sibling перед span[data-i18n-key]
-  let numberSpan = cellLabel.previousElementSibling;
-  // Если "Ячейка" обёрнут в лишний span, поднимаемся на уровень выше
-  if (!numberSpan && cellContainer.parentElement) {
-    numberSpan = cellContainer.previousElementSibling;
-  }
-
-  if (!numberSpan) return;
-
-  const cellNumber = parseInt(numberSpan.textContent.trim(), 10);
-  if (isNaN(cellNumber) || cellNumber <= 0) return;
-
-  // Анти-дупликация: не озвучивать тот же номер ячейки в течение 5 секунд
-  const now = Date.now();
-  if (_lastCellSpoken.number === cellNumber && now - _lastCellSpoken.time < 5000) return;
-  _lastCellSpoken = { number: cellNumber, time: now };
-
-  console.log(`[Saiko] Озвучка ячейки выдачи: ${cellNumber}`);
-
-  const sequence = buildCellNumberSequence(cellNumber);
-  // Приоритетная цепочка: только число ячейки
-  const chain = [];
-  for (let i = 0; i < sequence.length; i++) {
-    const item = sequence[i];
-    if (typeof item === 'object' && item.src) {
-      // Профильный звук с fallback
-      chain.push({ src: item.src, fallback: item.fallback, label: `cell_${i}` });
-    } else {
-      chain.push({ src: item, label: `cell_${i}` });
-    }
-  }
-
-  SoundQueue.addPriorityChain(chain);
+  if (!PLACEMENT_COMPLETE_AUDIO) return;
+  const audio = new Audio(PLACEMENT_COMPLETE_AUDIO);
+  audio.volume = 0.8;
+  audio.play().catch(err => console.warn("Ошибка воспроизведения завершения приёмки:", err));
 }
 
 
@@ -1238,9 +572,6 @@ function checkNodeForTriggers(node) {
   };
 
   if (isIssuingPage) {
-    // --- Озвучка ячейки выдачи (приоритет, 1 раз) ---
-    trySpeakIssuingCell(node);
-
     // --- Avito (проверяем права получателя) ---
     // Используем leafElements — контейнерный node.textContent включает текст
     // всего поддерева и вызывает ложные срабатывания на заказах других служб.
@@ -1285,19 +616,6 @@ function checkNodeForTriggers(node) {
       }
     }
 
-    // --- Оплата при получении (COD) ---
-    // Определяем по DOM: «Терминал / наличные» или «Привязанной картой»
-    // означает что заказ с оплатой при получении — проигрываем post_payment.mp3
-    for (const el of leafElements(node)) {
-      const t = el.textContent.trim();
-      if (!el.hasAttribute("data-postpayment-played") &&
-          (t === "Терминал / наличные" || t === "Привязанной картой")) {
-        playPostPaymentSound();
-        el.setAttribute("data-postpayment-played", "true");
-        break;
-      }
-    }
-
     // --- Оплата прошла успешно ---
     const paymentEl = findByKey(node, 'features.client-issuing-session:session-notification.PAYMENT_SUCCESS.title');
     if (paymentEl && !paymentEl.hasAttribute("data-payment-played")) {
@@ -1320,9 +638,6 @@ function checkNodeForTriggers(node) {
 /** Начальное сканирование DOM (для элементов, уже присутствующих на странице) */
 function initialTriggerScan() {
   if (document.title !== "Выдача клиентского заказа") return;
-
-  // Озвучка ячейки выдачи (приоритет, 1 раз)
-  if (document.body) trySpeakIssuingCell(document.body);
 
   // Avito — только листовые элементы, иначе срабатывает на контейнерах
   document.querySelectorAll('span, p, div, td, li').forEach(el => {
@@ -1371,16 +686,6 @@ function initialTriggerScan() {
     if (el.childElementCount === 0 && !el.hasAttribute("data-china-played") && el.textContent.includes("Из-за рубежа, нельзя вскрывать")) {
       playChinaSound();
       el.setAttribute("data-china-played", "true");
-    }
-  });
-
-  // Оплата при получении (COD) — «Терминал / наличные» или «Привязанной картой»
-  document.querySelectorAll('span, p, div, td, li').forEach(el => {
-    const t = el.textContent.trim();
-    if (el.childElementCount === 0 && !el.hasAttribute("data-postpayment-played") &&
-        (t === "Терминал / наличные" || t === "Привязанной картой")) {
-      playPostPaymentSound();
-      el.setAttribute("data-postpayment-played", "true");
     }
   });
 }
@@ -1991,15 +1296,7 @@ function onSPANavigate() {
   lamodaSoundPlayed    = false;
   enterCodeSoundPlayed = false;
   oplataSoundPlayed    = false;
-  postPaymentPlayed    = false;
-  paymentErrorPlayed   = false;
   codeAcceptedSoundPlayed = false;
-  // _lastCellSpoken НЕ сбрасываем — анти-дупликация по номеру ячейки + 5сек окно
-
-  // ВНИМАНИЕ: SoundQueue.clear() НЕ делаем здесь!
-  // Очистка очереди перенесена в интервал ниже — сразу при смене URL,
-  // ДО 300мс задержки. Иначе MutationObserver успевает добавить звуки
-  // (no_open, post_payment, ячейка) за эти 300мс, а потом clear() их убивает.
 
   // Перезапускаем одноразовые инициализации
   initOnce();
@@ -2012,29 +1309,11 @@ function onSPANavigate() {
   }
 }
 
-// React Router часто делает pushState + replaceState подряд —
-// интервал ловит оба изменения и дважды вызывает onSPANavigate.
-// Дедупликация: если onSPANavigate уже вызван для этого URL — игнорируем.
-let _lastNavURL = '';
-
 setInterval(() => {
   if (location.href !== currentURL) {
     currentURL = location.href;
-    // Очищаем очередь СРАЗУ при смене URL — до того как
-    // MutationObserver начнёт добавлять звуки новой страницы.
-    // Раньше clear() был в onSPANavigate() после 300мс задержки,
-    // и убивал звуки (no_open, post_payment), уже добавленные
-    // MutationObserver за эти 300мс.
-    SoundQueue.clear();
     // Небольшая задержка, чтобы React успел обновить document.title
-    // и все pushState/replaceState отработали
-    setTimeout(() => {
-      // Дедупликация: не вызываем если URL не изменился с прошлого onSPANavigate
-      if (location.href !== _lastNavURL) {
-        _lastNavURL = location.href;
-        onSPANavigate();
-      }
-    }, 300);
+    setTimeout(onSPANavigate, 200);
   }
 }, 500);
 
@@ -2081,63 +1360,18 @@ function handleContextInvalidation() {
 function safeInit() {
   try {
     initVoiceSettings();
-    initFadeInSetting();
     initEventListeners();
     initObservers();
     initHotkeys();
-    // Предзагружаем скрытый iframe для аудио (extension page без user gesture)
-    _ensureAudioIframe();
-    // MAIN world уведомляет когда Яндекс пытается проиграть «Оплата при получении».
-    // Используем буферизацию: MAIN world инжектируется раньше, событие может придти
-    // до того как мы повесили лисенер — сохраняем флаг и обрабатываем при первом gesture.
-    document.addEventListener('saiko-post-payment', playPostPaymentSound);
-    // Буфер: если событие уже было до нашего лисенера (race condition при быстрой загрузке)
-    if (window.__saikoPostPaymentPending) {
-      window.__saikoPostPaymentPending = false;
-      playPostPaymentSound();
-    }
-    // «Ошибка оплаты» — MAIN world уведомляет когда Яндекс пытается
-    // проиграть звук ошибки оплаты (1E8BF03A67E1AB13C8093DE56329D337).
-    document.addEventListener('saiko-payment-error', playPaymentErrorSound);
-    if (window.__saikoPaymentErrorPending) {
-      window.__saikoPaymentErrorPending = false;
-      playPaymentErrorSound();
-    }
-    injectPvzSoundBlocker();  // MAIN world: блокируем Яндексовскую TTS
     handleContextInvalidation();
   } catch (e) {
     console.error("[Saiko] Ошибка инициализации:", e);
   }
 }
 
-// ============================================================
-// === MAIN world: блокировка Яндексовской TTS (pvz-sound) ===
-// ============================================================
-// Инжектим скрипт в MAIN world, который перехватывает
-// Audio.prototype.play и блокирует воспроизведение
-// с pvz-sound.s3.yandex.net.
-// Это страховка поверх declarativeNetRequest — даже если
-// сетевой запрос прошёл, play() будет отменён.
-// ============================================================
-
-function injectPvzSoundBlocker() {
-  // Инжектим только на страницах Яндекс.Маркета
-  if (!location.hostname.includes('market.yandex.ru')) return;
-  // Не инжектим повторно
-  if (document.documentElement.hasAttribute('data-mh-pvz-blocker')) return;
-  document.documentElement.setAttribute('data-mh-pvz-blocker', 'true');
-
-  const script = document.createElement('script');
-  script.src = chrome.runtime.getURL('issuing-sound-main.js');
-  script.onload = () => script.remove();
-  script.onerror = () => console.warn('[Saiko] Failed to inject pvz-sound blocker');
-  (document.head || document.documentElement).appendChild(script);
-}
-
 // Очистка при выгрузке страницы
 window.addEventListener('beforeunload', () => {
   stopPlacementPoller();
-  stopFadeInObserver();
   if (window.__mainObserver) window.__mainObserver.disconnect();
 });
 
