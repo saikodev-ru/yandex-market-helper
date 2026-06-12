@@ -51,6 +51,15 @@ const PVZ_BLOCK_RULES = [
       resourceTypes: ['media'],
     },
   },
+  {
+    id: 104,
+    priority: 1,
+    action: { type: 'block' },
+    condition: {
+      urlFilter: '||pvz-sound.s3.yandex.net/voice_generated_prod/RU/NORMAL/39747E975806EAA650385B84F760CB92.mp3',
+      resourceTypes: ['media'],
+    },
+  },
 ];
 
 const PVZ_RULE_IDS = PVZ_BLOCK_RULES.map(r => r.id);
@@ -90,11 +99,25 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // своим звуком из sounds/num/N.mp3
 // ============================================================
 
+const NOT_FOUND_HASH = '39747E975806EAA650385B84F760CB92';
+
 chrome.webRequest.onErrorOccurred.addListener(
   (details) => {
     if (details.type !== 'media') return;
+    if (details.tabId === -1) return;
+
+    // not_found звук
+    if (details.url.includes(NOT_FOUND_HASH)) {
+      chrome.tabs.sendMessage(details.tabId, {
+        action: 'playBlockedSound',
+        sound: 'sounds/not_found.mp3'
+      }).catch(() => {});
+      return;
+    }
+
+    // числовой звук ячейки (N.mp3)
     const match = details.url.match(/\/(\d{1,3})\.mp3(?:\?|$)/i);
-    if (!match || details.tabId === -1) return;
+    if (!match) return;
     const number = parseInt(match[1], 10);
     if (isNaN(number) || number < 1) return;
 

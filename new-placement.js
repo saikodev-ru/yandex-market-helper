@@ -227,6 +227,11 @@
         if (msg.action === 'playBlockedNumber') {
             speakWithMp3(msg.number);
         }
+        if (msg.action === 'playBlockedSound') {
+            const a = new Audio(chrome.runtime.getURL(msg.sound));
+            a.volume = 1.0;
+            a.play().catch(() => {});
+        }
     });
 
     initObserver();
