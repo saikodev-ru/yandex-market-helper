@@ -87,7 +87,7 @@
                 position: 'relative',
                 width: '0.62em', height: '1.15em',
                 overflow: 'hidden', borderRadius: '6px',
-                background: changed ? 'rgba(255,255,255,0.03)' : 'transparent',
+                background: 'transparent',
             });
 
             const track = document.createElement('div');
