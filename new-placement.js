@@ -154,7 +154,7 @@
         observer.observe(document.body, { childList: true, subtree: true, characterData: true });
     }
 
-    // Глобальный слушатель
+    // Глобальный слушатель (capture phase — перехватываем до того, как событие дойдёт до инпутов)
     document.addEventListener('keydown', (e) => {
         if (isAssigning) return;
 
@@ -176,6 +176,7 @@
             if (editBtn) {
                 e.preventDefault();
                 e.stopPropagation();
+                e.stopImmediatePropagation();
 
                 isAssigning = true;
                 currentInput = "";
@@ -189,8 +190,26 @@
                     inp.style.backgroundColor = '#f0f0f0';
                 });
 
+                // Блокируем фокус на любые элементы во время ввода ячейки
+                const blockFocus = (fe) => {
+                    fe.preventDefault();
+                    fe.stopPropagation();
+                    fe.stopImmediatePropagation();
+                    if (document.activeElement instanceof HTMLElement) {
+                        document.activeElement.blur();
+                    }
+                };
+                document.addEventListener('focusin', blockFocus, true);
+
                 playBeepSequence();
                 editBtn.click();
+
+                // Снимаем фокус с любого элемента, который editBtn.click() мог сфокусировать
+                requestAnimationFrame(() => {
+                    if (document.activeElement instanceof HTMLElement) {
+                        document.activeElement.blur();
+                    }
+                });
 
                 const restoreInputs = () => {
                     allInputs.forEach(inp => {
@@ -238,6 +257,7 @@
 
                 const finish = () => {
                     document.removeEventListener('keydown', handleCellInput, true);
+                    document.removeEventListener('focusin', blockFocus, true);
                     isAssigning = false;
                     currentInput = "";
                 };
@@ -245,7 +265,7 @@
                 document.addEventListener('keydown', handleCellInput, true);
             }
         }
-    }, false);
+    }, true);
 
     // =========================
     // BLOCKED SOUND INTERCEPT
