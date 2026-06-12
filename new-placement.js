@@ -109,6 +109,12 @@
             }
         }
 
+        // Скрываем оверлей затемнения, который перекрывает страницу
+        const overlay = document.querySelector('div.mez-bg-themeLayerBgTransparent.mez-fixed.mez-z-600');
+        if (overlay) {
+            overlay.style.setProperty('display', 'none', 'important');
+        }
+
         const textWrapper = document.querySelector('.mez-flex-col.mez-gap-\\[8px\\].flex-1');
         if (textWrapper) {
             textWrapper.style.setProperty('width', '100%', 'important');
