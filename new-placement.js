@@ -13,6 +13,7 @@
     };
 
     let lastVoicedNumber = null;
+    let completionPlayed = false;
     let currentAudioObjects = [];
     let activeTimers = [];
     let voiceDebounceTimer = null;
@@ -134,6 +135,15 @@
     // =========================
     function initObserver() {
         const observer = new MutationObserver(() => {
+            // Детект завершения размещения — пустое состояние
+            const emptyState = document.querySelector('[data-testid="acceptance-placement-empty-state-title"]');
+            if (emptyState && !completionPlayed) {
+                completionPlayed = true;
+                const a = new Audio(chrome.runtime.getURL(CONFIG.SUCCESS_SOUND));
+                a.volume = 1.0;
+                a.play().catch(() => {});
+            }
+
             const fridge = document.querySelector('[aria-label="fridge-content"]');
             if (fridge) {
                 hideOverlay();
@@ -142,6 +152,7 @@
                     const text = numberSpan.textContent.trim();
                     if (text && text !== lastVoicedNumber) {
                         lastVoicedNumber = text;
+                        completionPlayed = false;  // Новое размещение — сбрасываем флаг завершения
                         clearTimeout(voiceDebounceTimer);
                         voiceDebounceTimer = setTimeout(() => {
                             const n = parseInt(text, 10);
