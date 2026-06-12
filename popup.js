@@ -32,8 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.documentElement.setAttribute('data-theme', data.theme || 'dark');
 
     // Время окончания смены
-    const timeInput = document.getElementById('shiftEndTime');
-    if (timeInput) timeInput.value = data.shiftEndTime || '21:00';
+    initHourPicker(data.shiftEndTime || '21:00');
 
     // Видимость строки времени
     updateShiftEndRow();
@@ -49,21 +48,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Время окончания смены
-  const timeInput = document.getElementById('shiftEndTime');
-  if (timeInput) {
-    timeInput.addEventListener('change', () => {
-      chrome.storage.sync.set({ shiftEndTime: timeInput.value });
-    });
-  }
-
   // Кнопка «Тест»
   const testBtn = document.getElementById('testShiftEnd');
   if (testBtn) {
     testBtn.addEventListener('click', () => {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         if (!tabs[0]) return;
-        const time = document.getElementById('shiftEndTime').value || '21:00';
+        const time = document.getElementById('hourRow')?.dataset.value || '21:00';
         chrome.tabs.sendMessage(tabs[0].id, {
           action: 'showShiftEndAnimation',
           time
@@ -119,4 +110,28 @@ function updateShiftEndRow() {
   const row = document.getElementById('shiftEndTimeRow');
   const cb = document.getElementById('toggleShiftEnd');
   if (row && cb) row.style.display = cb.checked ? '' : 'none';
+}
+
+function initHourPicker(selectedTime) {
+  const row = document.getElementById('hourRow');
+  if (!row) return;
+
+  const selectedHour = parseInt(selectedTime, 10) || 21;
+  const HOURS = [17, 18, 19, 20, 21, 22];
+
+  HOURS.forEach(h => {
+    const btn = document.createElement('button');
+    btn.className = 'hpill' + (h === selectedHour ? ' active' : '');
+    btn.textContent = h;
+    btn.addEventListener('click', () => {
+      row.querySelectorAll('.hpill').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const val = String(h).padStart(2, '0') + ':00';
+      row.dataset.value = val;
+      chrome.storage.sync.set({ shiftEndTime: val });
+    });
+    row.appendChild(btn);
+  });
+
+  row.dataset.value = String(Math.min(Math.max(selectedHour, 17), 22)).padStart(2, '0') + ':00';
 }

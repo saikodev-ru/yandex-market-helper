@@ -142,28 +142,33 @@
     padding: 10px 13px 14px;
   }
   .tw {
-    flex: 1; display: flex; align-items: center; gap: 10px;
+    flex: 1; display: flex; flex-direction: column; gap: 8px;
     background: var(--input-bg); border: 1px solid var(--input-border);
-    border-radius: 10px; padding: 8px 14px;
+    border-radius: 10px; padding: 10px 12px;
     transition: border-color .2s;
   }
   .tw:focus-within { border-color: var(--accent); }
-  .tmi {
-    background: none; border: none;
-    color: var(--text); font-size: 26px; font-weight: 800;
-    font-family: 'SF Mono','Cascadia Code','Consolas','Menlo',monospace;
-    outline: none; padding: 0; letter-spacing: 0.04em;
-    font-variant-numeric: tabular-nums;
-    -webkit-appearance: none;
-  }
-  .tmi::-webkit-calendar-picker-indicator {
-    opacity: 0.5; cursor: pointer;
-  }
-  [data-theme="dark"] .tmi { color-scheme: dark; }
-  [data-theme="light"] .tmi { color-scheme: light; }
   .tw-label {
     font-size: 11px; color: var(--text3); font-weight: 500;
-    line-height: 1.3; white-space: nowrap;
+    line-height: 1; white-space: nowrap;
+  }
+  .hour-row {
+    display: flex; gap: 5px;
+  }
+  .hpill {
+    flex: 1; height: 34px; border-radius: 8px;
+    background: var(--tog-off); border: 1.5px solid transparent;
+    color: var(--text2); font-size: 14px; font-weight: 700;
+    font-family: 'SF Mono','Cascadia Code','Consolas','Menlo',monospace;
+    cursor: pointer; transition: all .2s cubic-bezier(.4,0,.2,1);
+    display: flex; align-items: center; justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .hpill:hover { background: var(--card-hover); color: var(--text); }
+  .hpill:active { transform: scale(.93); }
+  .hpill.active {
+    background: var(--accent); color: #fff; border-color: transparent;
+    box-shadow: 0 0 0 3px var(--accent-glow);
   }
   .tst {
     padding: 10px 14px; font-size: 12px; font-weight: 600;
@@ -334,8 +339,8 @@
       </div>
       <div class="tmr" id="shiftEndTimeRow">
         <div class="tw">
-          <input type="time" class="tmi" id="shiftEndTime" value="21:00" min="00:00" max="23:59">
           <div class="tw-label">каждый день</div>
+          <div class="hour-row" id="hourRow"></div>
         </div>
         <button class="tst" id="testShiftEnd"><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>Тест</button>
       </div>
