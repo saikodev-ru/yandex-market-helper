@@ -130,11 +130,13 @@
         const FADE_OUT_START = 8800;
         const CLEANUP = 10200;
 
+        // Звук — сразу при появлении
+        const audio = new Audio(chrome.runtime.getURL('sounds/6am.mp3'));
+        audio.volume = 1.0;
+        audio.play().catch(() => {});
+
         setTimeout(() => {
             digitSlots.forEach(t => t.style.transform = 'translateY(-50%)');
-            const audio = new Audio(chrome.runtime.getURL('sounds/6am.mp3'));
-            audio.volume = 1.0;
-            audio.play().catch(() => {});
         }, FLIP_START);
 
         setTimeout(() => {
