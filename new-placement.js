@@ -8,13 +8,13 @@
         NUMBER_SPEED: 1.2,
         VOLUME: 1.0,
         OVERLAP_MS: 500,
-        RETRY_LIMIT: 20, 
-        RETRY_DELAY: 150 
+        RETRY_LIMIT: 20,
+        RETRY_DELAY: 150
     };
 
     let lastVoicedNumber = null;
-    let currentAudioObjects = []; 
-    let activeTimers = []; 
+    let currentAudioObjects = [];
+    let activeTimers = [];
     let voiceDebounceTimer = null;
     let isAssigning = false;
     let currentInput = "";
@@ -53,7 +53,6 @@
             osc.stop(ctx.currentTime + startTime + 0.08);
         };
         playBeep(0, 550); playBeep(0.1, 550);
-		playBeep(0, 100); playBeep(0.1, 100);
     }
 
     function playError8Bit() {
@@ -61,7 +60,7 @@
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.connect(gain); gain.connect(ctx.destination);
-        osc.type = 'square'; 
+        osc.type = 'square';
         osc.frequency.setValueAtTime(300, ctx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(100, ctx.currentTime + 0.3);
         gain.gain.setValueAtTime(0.2, ctx.currentTime);
@@ -136,7 +135,7 @@
     // =========================
     function checkIsDuplicate(barcode) {
         if (!barcode) return false;
-        const cleanBarcode = barcode.replace(/\D/g, ''); 
+        const cleanBarcode = barcode.replace(/\D/g, '');
         if (cleanBarcode.length < 5) return false;
 
         const infoSpans = document.querySelectorAll('.mez-flex-col.mez-gap-\\[4px\\] span');
@@ -220,27 +219,27 @@
             }
             scanBuffer = "";
         } else if (e.key.length === 1) {
-            if (now - lastKeyTime > 150) scanBuffer = ""; 
+            if (now - lastKeyTime > 150) scanBuffer = "";
             scanBuffer += e.key;
         }
         lastKeyTime = now;
 
         if (e.key === "\\") {
-            const editBtn = document.querySelector('.bg-themeSysSuccess')?.closest('[role="button"]') || 
+            const editBtn = document.querySelector('.bg-themeSysSuccess')?.closest('[role="button"]') ||
                             document.querySelector('svg[aria-label="icon-edit"]')?.closest('[role="button"]');
-            
+
             if (editBtn) {
                 e.preventDefault();
                 e.stopPropagation();
-                
-                isAssigning = true; 
+
+                isAssigning = true;
                 currentInput = "";
                 playBeepSequence();
                 editBtn.click();
 
                 const handleCellInput = (ke) => {
-                    ke.preventDefault(); 
-                    ke.stopPropagation(); 
+                    ke.preventDefault();
+                    ke.stopPropagation();
                     ke.stopImmediatePropagation();
 
                     if (ke.key === 'Escape' || ke.key === 'Enter') {
@@ -255,9 +254,9 @@
                             setTimeout(() => {
                                 const target = Array.from(document.querySelectorAll('div[role="button"], button'))
                                                .find(c => c.textContent.trim() === val);
-                                if (target) { 
-                                    target.scrollIntoView({block:'center'}); 
-                                    target.click(); 
+                                if (target) {
+                                    target.scrollIntoView({block:'center'});
+                                    target.click();
                                 }
                             }, 350);
                             finish();
@@ -277,135 +276,4 @@
     }, false);
 
     initObserver();
-})();
-
-(function() {
-    'use strict';
-
-    const hubMatch = window.location.pathname.match(/\/tpl-outlet\/(\d+)\//);
-    if (!hubMatch) return;
-    const hubId = hubMatch[1];
-    
-    let isCreating = false;
-
-    const getUrl = (p = 1) => `https://hubs.market.yandex.ru/tpl-outlet/${hubId}/placement?number=${p}&platformType=tpl-outlet`;
-
-    function cleanIframe(frame, loader) {
-        try {
-            const doc = frame.contentDocument || frame.contentWindow.document;
-            if (!doc || doc.location.href === 'about:blank') return;
-
-            const tableDiv = doc.querySelector('div[tabindex="0"].mez-overflow-auto');
-            
-            if (tableDiv) {
-                loader.style.display = 'none';
-                frame.style.opacity = '1';
-
-                const styleId = 'custom-cleaner-style';
-                if (!doc.getElementById(styleId)) {
-                    const style = doc.createElement('style');
-                    style.id = styleId;
-                    style.textContent = `
-                        html, body { background: #111 !important; margin: 0; padding: 0; overflow: hidden !important; cursor: default !important; }
-                        div[tabindex="0"].mez-overflow-auto {
-                            position: fixed !important;
-                            top: 0 !important; left: 0 !important;
-                            width: 100vw !important; height: 100vh !important;
-                            z-index: 999999 !important;
-                            background: #111 !important;
-                        }
-                        header, nav, aside, [class*="Header"], [class*="Sidebar"], [class*="Footer"], button, a { 
-                            display: none !important; 
-                        }
-                        table { background: #111 !important; width: 100% !important; pointer-events: none !important; }
-                        td, th { border-color: #333 !important; color: #ccc !important; font-size: 13px !important; }
-                    `;
-                    doc.head.appendChild(style);
-                }
-            }
-        } catch (e) {}
-    }
-
-    function injectUI() {
-        if (document.getElementById('custom-placement-block') || isCreating) return;
-        isCreating = true;
-
-        const target = Array.from(document.querySelectorAll('span')).find(el => 
-            el.getAttribute('data-i18n-key')?.includes('labels.order.barcode') || el.textContent.trim() === 'Заказ'
-        );
-        const parent = target?.closest('.mez-flex-col')?.parentElement;
-        
-        if (!parent) {
-            isCreating = false;
-            return;
-        }
-
-        const block = document.createElement('div');
-        block.id = 'custom-placement-block';
-        block.style.cssText = 'margin-top: 15px; background: #111; border-radius: 12px; border: 1px solid #333; order: 9999 !important; width: 100%; height: 450px; position: relative; overflow: hidden;';
-
-        block.innerHTML = `
-            <div id="page-nav-btns" style="position: absolute; top: 8px; right: 8px; z-index: 10; display: flex; gap: 4px; opacity: 0.4; transition: opacity 0.3s;">
-                ${[1, 2, 3, 4].map(p => `<button data-p="${p}" style="background: ${p===1?'#ffba00':'#222'}; color: ${p===1?'#000':'#ffba00'}; border: 1px solid #444; border-radius: 4px; padding: 2px 6px; cursor: pointer; font-size: 10px; font-weight: bold;">${p}</button>`).join('')}
-            </div>
-
-            <div id="placement-loader" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #111; z-index: 5;">
-                <div style="width: 30px; height: 30px; border: 3px solid #333; border-top: 3px solid #ffba00; border-radius: 50%; animation: spin 1s linear infinite;"></div>
-            </div>
-
-            <iframe id="placement-iframe" style="width: 200%; height: 200%; border: none; transform: scale(0.5); transform-origin: 0 0; background: #111; opacity: 0; transition: opacity 0.5s; pointer-events: none;"></iframe>
-
-            <style>
-                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-                #custom-placement-block:hover #page-nav-btns { opacity: 1; }
-            </style>
-        `;
-
-        parent.appendChild(block);
-
-        const frame = document.getElementById('placement-iframe');
-        const loader = document.getElementById('placement-loader');
-        
-        frame.src = getUrl(1);
-
-        setInterval(() => cleanIframe(frame, loader), 500);
-
-        block.querySelectorAll('#page-nav-btns button').forEach(btn => {
-            btn.onclick = function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                const p = this.getAttribute('data-p');
-                loader.style.display = 'flex';
-                frame.style.opacity = '0';
-                
-                block.querySelectorAll('#page-nav-btns button').forEach(b => {
-                    b.style.background = '#222'; b.style.color = '#ffba00';
-                });
-                this.style.background = '#ffba00'; this.style.color = '#000';
-                
-                frame.src = getUrl(p);
-            };
-        });
-        
-        isCreating = false;
-    }
-
-    window.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            setTimeout(() => {
-                const frame = document.getElementById('placement-iframe');
-                const loader = document.getElementById('placement-loader');
-                if (frame && loader) {
-                    loader.style.display = 'flex';
-                    frame.style.opacity = '0';
-                    frame.src = frame.src; 
-                }
-            }, 2500);
-        }
-    }, true);
-
-    const observer = new MutationObserver(() => {
-        if (!document.getElementById('custom-placement-block')) injectUI();
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
 })();

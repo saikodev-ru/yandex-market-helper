@@ -61,15 +61,6 @@
     },
     {
       "matches": [
-        "https://hubs.market.yandex.ru/tpl-outlet/*/placement*"
-      ],
-      "js": [
-        "placement.js"
-      ],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": [
         "https://hubs.market.yandex.ru/tpl-outlet/*/consolidation*"
       ],
       "js": [

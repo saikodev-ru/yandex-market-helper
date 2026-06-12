@@ -33,9 +33,6 @@ let enterCodeAudio           = null;
 let lamodaSoundPlayed        = false;
 let codeAcceptedSoundPlayed  = false;
 
-// Поллер завершения размещения (для React-страниц с отложенной загрузкой)
-let placementCompletePoller  = null;
-
 // Отслеживание навигации в SPA
 let currentURL = location.href;
 
@@ -58,10 +55,6 @@ function initVoiceSettings() {
       if (changes.voiceAlertsEnabled) {
         voiceAlertsEnabled = changes.voiceAlertsEnabled.newValue;
         console.log("Озвучка:", voiceAlertsEnabled ? "включена" : "выключена");
-      }
-      if (changes.placementCompleteEnabled) {
-        placementCompleteEnabled = changes.placementCompleteEnabled.newValue;
-        console.log("Озвучка завершения приёмки:", placementCompleteEnabled ? "включена" : "выключена");
       }
     });
   } catch (error) {
@@ -270,7 +263,6 @@ function _oscBeep(ctx, startTime, freq, gainPeak = 0.5) {
   osc.stop(ctx.currentTime  + startTime + 0.1);
 }
 
-/** Звук сканирования ячейки — используется в handleCellAssignment */
 function playScanBeep() {
   try {
     if (!window.scanAudioContext) {
@@ -692,53 +684,6 @@ function initialTriggerScan() {
 
 
 // ============================================================
-// === Мониторинг завершения размещения (React-совместимый) ===
-// ============================================================
-//
-// Проблема: React-страница «Размещение» подгружает список заказов
-// асинхронно. Если ориентироваться только на MutationObserver,
-// к моменту добавления узла текст «Отлично! Все заказы на месте»
-// ещё может не появиться.
-//
-// Решение: параллельный поллинг с интервалом 800 мс, который
-// проверяет элемент уже после полной отрисовки React.
-// ============================================================
-
-function startPlacementPoller() {
-  if (placementCompletePoller) return;
-  console.log("[Saiko] Запуск поллера завершения размещения");
-
-  placementCompletePoller = setInterval(() => {
-    if (!document.title.includes("Размещение")) {
-      stopPlacementPoller();
-      return;
-    }
-    checkPlacementComplete();
-  }, 800);
-}
-
-function stopPlacementPoller() {
-  if (!placementCompletePoller) return;
-  clearInterval(placementCompletePoller);
-  placementCompletePoller = null;
-  console.log("[Saiko] Поллер завершения размещения остановлен");
-}
-
-function checkPlacementComplete() {
-  const el = document.querySelector('span[data-i18n-key="pages.cargo-placement:empty-state"]');
-  if (
-    el &&
-    el.textContent.trim() === "Отлично! Все заказы на месте" &&
-    !el.hasAttribute("data-placement-checked")
-  ) {
-    el.setAttribute("data-placement-checked", "true");
-    console.log("[Saiko] Завершение размещения обнаружено, воспроизводим звук");
-    playPlacementCompleteSound();
-  }
-}
-
-
-// ============================================================
 // === Обработчик пятизначных кодов (страница выдачи) ===
 // ============================================================
 
@@ -764,97 +709,6 @@ function setupFiveDigitInputHandler() {
   console.log("Добавлен обработчик пятизначных кодов");
 }
 
-
-// ============================================================
-// === Назначение ячеек (страница размещения) ===
-// ============================================================
-
-function handleCellAssignment(e) {
-  if (!/\/tpl-outlet\/\d{8}\/placement/.test(window.location.href)) return;
-  if (e.key !== "\\") return;
-
-  e.preventDefault();
-  e.stopPropagation();
-  e.stopImmediatePropagation();
-
-  playScanBeep();
-
-  const allInputs = document.querySelectorAll('input, textarea, [contenteditable="true"]');
-  allInputs.forEach(inp => {
-    inp.setAttribute('readonly', 'true');
-    inp.style.pointerEvents = 'none';
-    inp.style.backgroundColor = '#f0f0f0';
-  });
-
-  const dropdownTrigger = document.querySelector('[class*="mez-bg-forestGreen-70"]');
-  if (!dropdownTrigger) {
-    console.log("Dropdown не найден");
-    restoreInputs(allInputs);
-    return;
-  }
-  dropdownTrigger.click();
-
-  let cellInput = "";
-
-  const handleCellInput = (ev) => {
-    ev.preventDefault();
-    ev.stopPropagation();
-    ev.stopImmediatePropagation();
-    if (ev.key === "\\") return;
-
-    if (ev.key >= '0' && ev.key <= '9' && cellInput.length < 3) {
-      cellInput += ev.key;
-      console.log("Ввод ячейки:", cellInput);
-      if (cellInput.length === 3) {
-        cleanupCellHandler(handleCellInput, allInputs);
-        findAndSelectCell(cellInput);
-      }
-    } else if (ev.key === 'Escape') {
-      cleanupCellHandler(handleCellInput, allInputs);
-      console.log("Назначение ячейки отменено");
-    }
-  };
-
-  document.addEventListener('keydown', handleCellInput, true);
-}
-
-function cleanupCellHandler(handler, inputs) {
-  document.removeEventListener('keydown', handler, true);
-  restoreInputs(inputs);
-}
-
-function restoreInputs(inputs) {
-  inputs.forEach(inp => {
-    inp.removeAttribute('readonly');
-    inp.style.pointerEvents  = '';
-    inp.style.backgroundColor = '';
-  });
-}
-
-function findAndSelectCell(cellNumber) {
-  console.log("Ищем ячейку:", cellNumber);
-  setTimeout(() => {
-    let option = document.querySelector(`li[data-value="${cellNumber}"]`);
-
-    if (!option) {
-      for (const span of document.querySelectorAll('span.mez-font-ys-text')) {
-        if (span.textContent.trim() === cellNumber) { option = span.closest('li'); break; }
-      }
-    }
-    if (!option) {
-      for (const li of document.querySelectorAll('li')) {
-        if (li.textContent.trim() === cellNumber) { option = li; break; }
-      }
-    }
-
-    if (option) {
-      option.click();
-      console.log("Ячейка назначена:", cellNumber);
-    } else {
-      console.log("Ячейка", cellNumber, "не найдена");
-    }
-  }, 300);
-}
 
 // ============================================================
 // === Делегированный обработчик кнопки «Ввести код выдачи» ===
@@ -900,7 +754,6 @@ function setupEnterCodeDelegation() {
 }
 
 function initEventListeners() {
-  document.addEventListener("keydown", handleCellAssignment, true);
   setupEnterCodeDelegation();
 }
 
@@ -1275,9 +1128,6 @@ const mainObserver = new MutationObserver(mutations => {
       // Звуковые триггеры
       checkNodeForTriggers(node);
 
-      // Размещение: поллер стартует при попадании на страницу
-      if (document.title.includes("Размещение")) startPlacementPoller();
-
       // Пятизначные коды появятся после React-рендера инпута
       setupFiveDigitInputHandler();
     }
@@ -1300,13 +1150,6 @@ function onSPANavigate() {
 
   // Перезапускаем одноразовые инициализации
   initOnce();
-
-  // Поллер размещения
-  if (document.title.includes("Размещение")) {
-    startPlacementPoller();
-  } else {
-    stopPlacementPoller();
-  }
 }
 
 setInterval(() => {
@@ -1327,7 +1170,6 @@ function initOnce() {
   setupFiveDigitInputHandler();
   initialTriggerScan();
   initBarcodeButtons();
-  if (document.title.includes("Размещение")) startPlacementPoller();
 }
 
 function initObservers() {
@@ -1371,7 +1213,6 @@ function safeInit() {
 
 // Очистка при выгрузке страницы
 window.addEventListener('beforeunload', () => {
-  stopPlacementPoller();
   if (window.__mainObserver) window.__mainObserver.disconnect();
 });
 

@@ -18,26 +18,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-
-chrome.declarativeNetRequest.updateDynamicRules({
-  addRules: [{
-    id: 1,
-    priority: 1,
-    action: {
-      type: "modifyHeaders",
-      responseHeaders: [
-        { header: "content-security-policy", operation: "remove" },
-        { header: "x-frame-options", operation: "remove" }
-      ]
-    },
-    condition: {
-      urlFilter: "hubs.market.yandex.ru",
-      resourceTypes: ["sub_frame"]
-    }
-  }],
-  removeRuleIds: [1]
-});
-
 // background.js
 // Управляет динамическими правилами блокировки pvz-sound.
 // Правила активны когда renumEnabled = true (озвучиваем сами — Яндекс молчит).
