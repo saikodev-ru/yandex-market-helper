@@ -179,6 +179,16 @@
 
                 isAssigning = true;
                 currentInput = "";
+
+                // Блокируем все инпуты
+                const allInputs = document.querySelectorAll('input, textarea, [contenteditable="true"]');
+                allInputs.forEach(inp => {
+                    inp.setAttribute('data-mh-readonly', inp.readOnly);
+                    inp.readOnly = true;
+                    inp.style.pointerEvents = 'none';
+                    inp.style.backgroundColor = '#f0f0f0';
+                });
+
                 playBeepSequence();
                 editBtn.click();
 
@@ -188,6 +198,13 @@
                     ke.stopImmediatePropagation();
 
                     if (ke.key === 'Escape' || ke.key === 'Enter') {
+                        // Восстанавливаем инпуты
+                        allInputs.forEach(inp => {
+                            inp.readOnly = inp.hasAttribute('data-mh-readonly');
+                            inp.removeAttribute('data-mh-readonly');
+                            inp.style.pointerEvents = '';
+                            inp.style.backgroundColor = '';
+                        });
                         finish();
                         return;
                     }
@@ -196,6 +213,13 @@
                         currentInput += ke.key;
                         if (currentInput.length === 3) {
                             const val = currentInput;
+                            // Восстанавливаем инпуты
+                            allInputs.forEach(inp => {
+                                inp.readOnly = inp.hasAttribute('data-mh-readonly');
+                                inp.removeAttribute('data-mh-readonly');
+                                inp.style.pointerEvents = '';
+                                inp.style.backgroundColor = '';
+                            });
                             setTimeout(() => {
                                 const target = Array.from(document.querySelectorAll('div[role="button"], button'))
                                                .find(c => c.textContent.trim() === val);
