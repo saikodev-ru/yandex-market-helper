@@ -1237,6 +1237,8 @@ window.addEventListener('error', (e) => {
 // =========================
 // BLOCKED SOUND INTERCEPT
 // =========================
+const _blockedNumberCache = { lastNum: null, lastTime: 0 };
+
 chrome.runtime.onMessage.addListener((msg) => {
     if (msg.action === 'playBlockedSound') {
         const a = new Audio(chrome.runtime.getURL(msg.sound));
@@ -1244,6 +1246,15 @@ chrome.runtime.onMessage.addListener((msg) => {
         a.play().catch(() => {});
     }
     if (msg.action === 'playBlockedNumber') {
+        // Дедупликация: не играть тот же номер дважды за 800мс
+        const now = Date.now();
+        if (msg.number === _blockedNumberCache.lastNum &&
+            now - _blockedNumberCache.lastTime < 800) {
+            return;
+        }
+        _blockedNumberCache.lastNum = msg.number;
+        _blockedNumberCache.lastTime = now;
+
         const MP3_PATH = 'sounds/num/';
         const url = chrome.runtime.getURL(MP3_PATH + msg.number + '.mp3');
         const a = new Audio(url);

@@ -1,4 +1,8 @@
 // renum.js — Universal MP3 TTS (Unified + Merch Session)
+if (window.__renumLoaded) {
+    console.log('🔊 RENUM: already loaded, skipping');
+} else {
+    window.__renumLoaded = true;
 (function () {
     'use strict';
     console.log('🔊 RENUM started');
@@ -27,10 +31,10 @@
     function playBeepSound(audioContext) {
         try {
             // три одинаковых быстрых сигнала подряд
-		playBeep(audioContext, 0, 550);
-		playBeep(audioContext, 0, 100);
-		playBeep(audioContext, 0.07, 650);
-		playBeep(audioContext, 0.07, 100);
+                playBeep(audioContext, 0, 550);
+                playBeep(audioContext, 0, 100);
+                playBeep(audioContext, 0.07, 650);
+                playBeep(audioContext, 0.07, 100);
 
             function playBeep(ctx, startTime, freq) {
                 const oscillator = ctx.createOscillator();
@@ -231,3 +235,4 @@
     window.testRenum = n => speakWithMp3(n ?? 42);
 
 })();
+} // end __renumLoaded guard
