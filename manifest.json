@@ -66,7 +66,8 @@
         "https://hubs.market.yandex.ru/tpl-outlet/*/consolidation*"
       ],
       "js": [
-        "renum.js"
+        "renum.js",
+        "consolidation-helper.js"
       ],
       "run_at": "document_idle"
     }

@@ -86,6 +86,43 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ── Upload (type lines) ──
+  const uploadText = document.getElementById('uploadText');
+  const uploadCount = document.getElementById('uploadCount');
+  const uploadStart = document.getElementById('uploadStart');
+
+  if (uploadText && uploadCount) {
+    const updateCount = () => {
+      const lines = uploadText.value.split('\n').filter(l => l.trim());
+      uploadCount.textContent = lines.length + ' строк';
+    };
+    uploadText.addEventListener('input', updateCount);
+    updateCount();
+  }
+
+  if (uploadStart) {
+    uploadStart.addEventListener('click', () => {
+      const text = uploadText?.value || '';
+      const lines = text.split('\n').filter(l => l.trim());
+      if (!lines.length) return;
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (!tabs[0]) return;
+        chrome.tabs.sendMessage(tabs[0].id, {
+          action: 'typeLines',
+          lines
+        }).catch(() => {});
+      });
+      // Visual feedback
+      const originalHTML = uploadStart.innerHTML;
+      uploadStart.innerHTML = '<svg viewBox=\"0 0 24 24\" style=\"width:12px;height:12px;stroke:#fff;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;\"><polyline points=\"20 6 9 17 4 12\"/></svg>Отправлено';
+      uploadStart.style.background = '#34c759';
+      setTimeout(() => {
+        uploadStart.innerHTML = originalHTML;
+        uploadStart.style.background = '';
+      }, 1200);
+    });
+  }
+
   // ── Restore hidden news ──
   const restoreBtn = document.getElementById('restoreNewsBtn');
   if (restoreBtn) {

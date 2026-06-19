@@ -239,6 +239,19 @@
   .ic-slate  { background: linear-gradient(135deg,#7e8fa8,#4e6070); }
   .ic-cyan   { background: linear-gradient(135deg,#40d4f0,#06a8cc); }
   .ic-dark   { background: linear-gradient(135deg,#2d2d3a,#1a1a24); }
+
+  /* ── Upload textarea ── */
+  textarea#uploadText {
+    width: 100%; min-height: 120px; resize: vertical;
+    background: var(--input-bg); border: 1px solid var(--input-border);
+    border-radius: 8px; padding: 8px 10px;
+    color: var(--text); font-family: 'SF Mono','Cascadia Code','Consolas','Menlo',monospace;
+    font-size: 12px; line-height: 1.5; outline: none;
+    transition: border-color .2s;
+  }
+  textarea#uploadText:focus { border-color: var(--accent); }
+  textarea#uploadText::placeholder { color: var(--text3); }
+  .upload-footer { display: flex; align-items: center; justify-content: space-between; }
 </style>
 </head>
 <body>
@@ -264,6 +277,7 @@
     <button class="tab" data-tab="acceptance">Приёмка</button>
     <button class="tab" data-tab="sounds">Звуки</button>
     <button class="tab" data-tab="settings">Настройки</button>
+    <button class="tab" data-tab="upload">Загрузить</button>
   </div>
 
   <!-- Content -->
@@ -358,6 +372,22 @@
           <div class="ri ic-cyan"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></div>
           <div class="rb"><div class="rn">Звук «Код принят»</div></div>
           <label class="tog"><input type="checkbox" id="toggleSuccessShipSound"><span class="tt"><span class="th"></span></span></label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 5: Загрузить -->
+    <div class="tab-panel" id="panel-upload">
+      <div class="card">
+        <div class="sub" style="border-top:none;">
+          <div class="tw" style="flex-direction:column;gap:7px;">
+            <div class="tw-label">введите коды, каждый с новой строки</div>
+            <textarea id="uploadText" rows="8" placeholder="58248818947-1\nP04713512566\n..." spellcheck="false"></textarea>
+            <div class="upload-footer">
+              <span id="uploadCount" class="tw-label">0 строк</span>
+              <button class="tst" id="uploadStart" style="margin-top:0;"><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>Начать ввод</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
