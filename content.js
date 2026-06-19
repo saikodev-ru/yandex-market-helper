@@ -1269,57 +1269,33 @@ chrome.runtime.onMessage.addListener((msg) => {
 // =========================
 // TYPE LINES INTO PAGE
 // =========================
-function setNativeValue(el, value) {
-    // For React-controlled inputs
-    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype, 'value'
-    )?.set;
-    const nativeTextareaValueSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLTextAreaElement.prototype, 'value'
-    )?.set;
-    if (el.tagName === 'TEXTAREA' && nativeTextareaValueSetter) {
-        nativeTextareaValueSetter.call(el, value);
-    } else if (el.tagName === 'INPUT' && nativeInputValueSetter) {
-        nativeInputValueSetter.call(el, value);
-    } else {
-        el.value = value;
-    }
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-}
-
-function simulateKey(el, key) {
-    el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
-    el.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true, cancelable: true }));
-}
-
 async function typeLinesIntoPage(lines) {
-    // Find the active/focused input or the first visible input
-    let input = document.activeElement;
-    if (!input || (input.tagName !== 'INPUT' && input.tagName !== 'TEXTAREA')) {
-        // Try to find the main input on the page
-        const inputs = document.querySelectorAll(
-            'input[type="text"], input[type="search"], input:not([type]), textarea'
-        );
-        for (const inp of inputs) {
-            if (inp.offsetParent !== null && !inp.disabled && !inp.readOnly) {
-                input = inp;
-                input.focus();
-                break;
-            }
-        }
-    }
-    if (!input || (input.tagName !== 'INPUT' && input.tagName !== 'TEXTAREA')) return;
-
     const DELAY = 500;
 
     for (const line of lines) {
         const text = line.trim();
         if (!text) continue;
 
-        setNativeValue(input, text);
+        // Вводим в то, что сейчас в фокусе на странице — не ищем поля
+        const el = document.activeElement || document.body;
+        el.focus();
+
+        // execCommand('insertText') работает с input, textarea, contenteditable
+        document.execCommand('selectAll', false, null);
+        document.execCommand('insertText', false, text);
+
         await new Promise(r => setTimeout(r, DELAY));
-        simulateKey(input, 'Enter');
+
+        // Enter
+        el.dispatchEvent(new KeyboardEvent('keydown', {
+            key: 'Enter', code: 'Enter', keyCode: 13, which: 13,
+            bubbles: true, cancelable: true
+        }));
+        el.dispatchEvent(new KeyboardEvent('keyup', {
+            key: 'Enter', code: 'Enter', keyCode: 13, which: 13,
+            bubbles: true, cancelable: true
+        }));
+
         await new Promise(r => setTimeout(r, DELAY));
     }
 }
