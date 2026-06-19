@@ -1234,6 +1234,24 @@ window.addEventListener('error', (e) => {
   }
 });
 
+// =========================
+// BLOCKED SOUND INTERCEPT
+// =========================
+chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.action === 'playBlockedSound') {
+        const a = new Audio(chrome.runtime.getURL(msg.sound));
+        a.volume = 1.0;
+        a.play().catch(() => {});
+    }
+    if (msg.action === 'playBlockedNumber') {
+        const MP3_PATH = 'sounds/num/';
+        const url = chrome.runtime.getURL(MP3_PATH + msg.number + '.mp3');
+        const a = new Audio(url);
+        a.volume = 1.0;
+        a.play().catch(() => {});
+    }
+});
+
 // Запуск
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", safeInit);

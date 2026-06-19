@@ -108,6 +108,22 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // ============================================================
 
 const NOT_FOUND_HASH = '39747E975806EAA650385B84F760CB92';
+const POST_PAYMENT_HASH = 'E2F9405756F98ED1339B540D1F604B6C';
+
+// Правило блокировки post_payment звука — всегда активно
+const POST_PAYMENT_RULE = {
+  id: 201,
+  priority: 1,
+  action: { type: 'block' },
+  condition: {
+    urlFilter: '||pvz-sound.s3.yandex.net/voice_generated_prod/RU/NORMAL/E2F9405756F98ED1339B540D1F604B6C.mp3',
+    resourceTypes: ['media'],
+  },
+};
+chrome.declarativeNetRequest.updateDynamicRules({
+  addRules: [POST_PAYMENT_RULE],
+  removeRuleIds: [201],
+});
 
 // ============================================================
 // Окончание смены — FNAF-анимация по таймеру
@@ -173,6 +189,15 @@ chrome.webRequest.onErrorOccurred.addListener(
       chrome.tabs.sendMessage(details.tabId, {
         action: 'playBlockedSound',
         sound: 'sounds/not_found.mp3'
+      }).catch(() => {});
+      return;
+    }
+
+    // post_payment звук
+    if (details.url.includes(POST_PAYMENT_HASH)) {
+      chrome.tabs.sendMessage(details.tabId, {
+        action: 'playBlockedSound',
+        sound: 'sounds/post_payment.mp3'
       }).catch(() => {});
       return;
     }
